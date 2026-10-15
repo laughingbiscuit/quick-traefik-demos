@@ -1,0 +1,7 @@
+# Components Flux installs. Comment one out, commit and push to remove it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - 00-demo-namespace.yaml
+  - 00-traefik-hub.yaml
+  - 01-whoami.yaml
