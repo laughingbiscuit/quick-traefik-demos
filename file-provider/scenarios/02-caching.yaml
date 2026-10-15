@@ -1,0 +1,25 @@
+# HTTP cache (Hub): first call MISS, repeats HIT for 60s.
+#   curl -si http://localhost:8000/cache | grep -i x-cache-status
+#
+# whoami sends no Cache-Control, so cacheable-for-60s adds one. Middlewares
+# see the response in reverse order: cacheable-for-60s sets the header
+# before the cache looks at it.
+http:
+  routers:
+    cache:
+      rule: PathPrefix(`/cache`)
+      entryPoints: [web]
+      middlewares: [cache, cacheable-for-60s]
+      service: whoami
+  middlewares:
+    cache:
+      plugin:
+        httpCache:
+          maxTtl: 600
+          store:
+            memory:
+              limit: 64Mi
+    cacheable-for-60s:
+      headers:
+        customResponseHeaders:
+          Cache-Control: public, max-age=60

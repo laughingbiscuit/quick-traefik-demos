@@ -1,0 +1,15 @@
+# Rate limit: 2 requests/s with a burst of 4, then 429.
+#   for i in $(seq 10); do curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/rate-limit; done
+http:
+  routers:
+    rate-limit:
+      rule: PathPrefix(`/rate-limit`)
+      entryPoints: [web]
+      middlewares: [rate-limit]
+      service: whoami
+  middlewares:
+    rate-limit:
+      rateLimit:
+        average: 2
+        period: 1s
+        burst: 4
