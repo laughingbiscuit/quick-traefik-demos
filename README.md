@@ -4,7 +4,7 @@ GitOps demos of Traefik Hub configuration. The same scenarios run two ways:
 
 | Demo | Traefik config as | Runs on | Synced by |
 |---|---|---|---|
-| `file-provider/` | Traefik's own YAML (file provider) | a VM: Lima here; SUSE, Nutanix or VMware the same way | a systemd timer pulling Git every 10s |
+| `file-provider/` | Traefik's own YAML (file provider) | a Lima VM (any Linux VM works the same way) | a systemd timer pulling Git every 10s |
 | `k8s-providers/` | Kubernetes objects (CRDs; Gateway API later) | a k3d cluster | Flux, every 10s |
 
 Both pull from one repo on a local Gitea, so every change in a demo is a plain `git push`.
@@ -103,7 +103,7 @@ quick-traefik-demos/
 
 - **k8s-providers:** Flux has two Kustomizations. `stack` installs Hub through a HelmRelease; the bootstrap waits until it is healthy before creating `scenarios`, which applies whatever `kustomization.yaml` lists. They are split because the scenarios use Traefik's CRDs, which only exist once Hub is installed.
 - **file-provider:** every 10s `gitops-sync` on the VM pulls the repo, copies the files listed in `enabled.txt` into the folder Traefik watches, and runs `docker compose up` on `stack/compose.yaml`. Traefik hot-reloads the files; compose only recreates containers whose definition changed. Traefik's static config is kept as flags in `compose.yaml`, so changing it restarts Traefik automatically.
-- **Other VM platforms:** `provision.sh` is the portable part. Run it as root with `GITOPS_REPO` and `HUB_TOKEN` set, for example from cloud-init. It uses `zypper` on SUSE and Docker's install script elsewhere. The `z` on Traefik's volume in `compose.yaml` lets it read its config on SELinux hosts such as SUSE.
+- **Other VM platforms:** `provision.sh` is the portable part. Run it as root with `GITOPS_REPO` and `HUB_TOKEN` set, for example from cloud-init. It installs Docker with Docker's install script if it's missing.
 
 ## Gotchas
 

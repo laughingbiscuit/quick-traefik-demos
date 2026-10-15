@@ -18,7 +18,7 @@ services:
       - "8000:8000"   # demo traffic
       - "8001:8080"   # dashboard
     volumes:
-      - /opt/gitops/dynamic:/etc/traefik/dynamic:ro,z
+      - /opt/gitops/dynamic:/etc/traefik/dynamic:ro
     restart: unless-stopped
 
   whoami:
