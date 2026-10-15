@@ -4,11 +4,7 @@ set -e
 : "${GITOPS_REPO:?}" "${HUB_TOKEN:?}"
 set -x
 
-if command -v zypper >/dev/null; then
-  zypper -n install docker docker-compose git rsync && systemctl enable --now docker
-else
-  command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh
-fi
+command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh
 
 mkdir -p /etc/gitops
 cat > /etc/gitops/env <<EOF
