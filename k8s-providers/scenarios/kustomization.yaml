@@ -1,0 +1,7 @@
+# Scenarios Flux applies. Uncomment one, then git commit -am "..." && git push
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - 00-whoami.yaml
+  - 01-rate-limit.yaml
+# - 02-caching.yaml

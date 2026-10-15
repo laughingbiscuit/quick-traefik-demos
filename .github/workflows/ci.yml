@@ -1,0 +1,47 @@
+# Build both demos, enable every scenario, test them all.
+# Needs a HUB_TOKEN repository secret (your Traefik Hub gateway token).
+name: ci
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  demos:
+    runs-on: ubuntu-latest
+    env:
+      HUB_TOKEN: ${{ secrets.HUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install k3d, flux and hurl
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG=v5.9.0 bash
+          curl -s https://fluxcd.io/install.sh | sudo FLUX_VERSION=2.9.6 bash
+          curl -sLO https://github.com/Orange-OpenSource/hurl/releases/download/8.0.1/hurl_8.0.1_amd64.deb
+          sudo apt-get install -y ./hurl_8.0.1_amd64.deb
+
+      - name: Gitea
+        run: ./bootstrap-git.sh
+
+      - name: k8s-providers demo (k3d + Flux)
+        run: ./k8s-providers/bootstrap.sh
+
+      # No Lima here: the runner is the VM
+      - name: file-provider demo
+        run: |
+          sudo HUB_TOKEN="$HUB_TOKEN" GITOPS_REPO=http://demo:Passw0rd%21@localhost:3000/demo/gitops.git sh file-provider/provision.sh
+          until curl -sf http://localhost:8000/; do sleep 2; done
+
+      - name: Enable every scenario
+        working-directory: gitops-demo-repo
+        run: |
+          sed -i 's/^# \([0-9]\)/\1/' file-provider/enabled.txt
+          sed -i 's/^# - /  - /' k8s-providers/kustomization.yaml
+          git commit -am "Enable every scenario" && git push
+
+      - name: Test k8s-providers
+        run: hurl --test --retry 20 --retry-interval 1000 --variable base_url=http://localhost:8080 tests/*.hurl
+
+      - name: Test file-provider
+        run: hurl --test --retry 20 --retry-interval 1000 --variable base_url=http://localhost:8000 tests/*.hurl
