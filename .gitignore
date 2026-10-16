@@ -1,5 +1,6 @@
 # Secrets
 .env
+/certs/
 
 # Generated: ./docs.sh output (published by .github/workflows/pages.yml)
 _site/

@@ -1,7 +1,8 @@
 #!/bin/sh
-# Turns any Linux VM into the file-provider demo. Needs GITOPS_REPO and HUB_TOKEN.
+# Turns any Linux VM into the file-provider demo. Needs GITOPS_REPO, HUB_TOKEN and the websecure
+# certificate as TLS_CERT and TLS_KEY (both base64, see issue_cert in demo.sh).
 set -e
-: "${GITOPS_REPO:?}" "${HUB_TOKEN:?}"
+: "${GITOPS_REPO:?}" "${HUB_TOKEN:?}" "${TLS_CERT:?}" "${TLS_KEY:?}"
 set -x
 
 TRAEFIK_IMAGE=ghcr.io/traefik/traefik-hub:v3.21.2
@@ -18,6 +19,11 @@ mkdir -p /etc/traefik/dynamic
 set +x   # keep the token off screen
 echo "TRAEFIK_HUB_TOKEN=$HUB_TOKEN" > /etc/traefik/traefik.env
 chmod 600 /etc/traefik/traefik.env
+mkdir -p /etc/traefik/certs
+echo "$TLS_CERT" | base64 -d > /etc/traefik/certs/tls.crt
+echo "$TLS_KEY" | base64 -d > /etc/traefik/certs/tls.key
+chown root:traefik /etc/traefik/certs/tls.key
+chmod 640 /etc/traefik/certs/tls.key
 set -x
 
 mkdir -p /etc/gitops
@@ -36,14 +42,14 @@ TRAEFIK_CONFIG=/etc/traefik/dynamic
 [ -d $REPO ] || git clone -q "$GITOPS_REPO" $REPO
 git -C $REPO fetch -q && git -C $REPO reset -q --hard origin/main
 
-# Dynamic config: the dashboard plus the scenarios listed in enabled.txt. Traefik hot-reloads it.
+# Dynamic config: the dashboard, the certificate and the scenarios listed in enabled.txt. Traefik hot-reloads it.
 rm -rf /tmp/enabled && mkdir -m 755 /tmp/enabled
-cp $DEMO/dashboard.yaml /tmp/enabled/
+cp $DEMO/dashboard.yaml $DEMO/tls.yaml /tmp/enabled/
 grep -vE '^[[:space:]]*(#|$)' $SCENARIOS/enabled.txt | (cd $SCENARIOS && xargs -r cp -t /tmp/enabled)
 mkdir -p $TRAEFIK_CONFIG && rsync -a --delete /tmp/enabled/ $TRAEFIK_CONFIG/
 
 # Static config: only rewrite it when it differs, or the path unit would restart Traefik on every run.
-cmp -s $DEMO/traefik-static.yaml /etc/traefik/traefik.yaml || install -m 644 $DEMO/traefik-static.yaml /etc/traefik/traefik.yaml
+cmp -s $DEMO/traefik-static.yaml /etc/traefik/traefik-static.yaml || install -m 644 $DEMO/traefik-static.yaml /etc/traefik/traefik-static.yaml
 
 docker compose -p gitops -f $DEMO/stack/compose.yaml up -d --remove-orphans --quiet-pull
 EOF

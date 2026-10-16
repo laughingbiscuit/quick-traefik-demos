@@ -5,6 +5,10 @@
 entryPoints:
   web:
     address: ":8000"       # demo traffic
+  websecure:
+    address: ":8444"       # TLS: terminated here, with the default certificate from tls.yaml
+    http:
+      tls: {}
   traefik:
     address: ":8001"       # dashboard and /ping
 

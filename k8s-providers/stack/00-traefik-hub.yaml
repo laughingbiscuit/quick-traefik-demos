@@ -38,6 +38,12 @@ spec:
       web:
         port: 8000
         exposedPort: 80
+    # websecure keeps the chart defaults (container port 8443, exposed as :443, TLS on). Its default
+    # certificate is the Secret wildcard-test, created by `./demo.sh k8s` so the key never lands in Git.
+    tlsStore:
+      default:
+        defaultCertificate:
+          secretName: wildcard-test
     gateway:
       listeners:
         web:

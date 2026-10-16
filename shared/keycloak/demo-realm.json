@@ -1,0 +1,39 @@
+{
+  "realm": "demo",
+  "enabled": true,
+  "roles": {
+    "realm": [{"name": "admin"}]
+  },
+  "users": [
+    {
+      "username": "demo",
+      "enabled": true,
+      "email": "demo@example.com",
+      "emailVerified": true,
+      "firstName": "Demo",
+      "lastName": "Admin",
+      "credentials": [{"type": "password", "value": "Passw0rd!", "temporary": false}],
+      "realmRoles": ["admin"]
+    },
+    {
+      "username": "guest",
+      "enabled": true,
+      "email": "guest@example.com",
+      "emailVerified": true,
+      "firstName": "Demo",
+      "lastName": "Guest",
+      "credentials": [{"type": "password", "value": "Passw0rd!", "temporary": false}]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "traefik",
+      "secret": "traefik-secret",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:8000/*", "http://localhost:8080/*"]
+    }
+  ]
+}

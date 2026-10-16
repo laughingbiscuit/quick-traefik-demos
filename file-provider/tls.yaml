@@ -1,0 +1,8 @@
+# Default certificate for the websecure entrypoint: a *.test wildcard from Vault's root CA.
+# vm-provision.sh puts the files there; they never go through Git. Dynamic, like the dashboard.
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/traefik/certs/tls.crt
+        keyFile: /etc/traefik/certs/tls.key
