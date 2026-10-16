@@ -7,8 +7,9 @@ Small GitOps demos of how Traefik works. Each scenario runs two ways from one Gi
 | `file-provider/` | Traefik's own YAML files, hot-reloaded | a Linux VM (Lima locally), no Kubernetes |
 | `k8s-providers/` | Kubernetes objects: Ingress, IngressRoute, Gateway API | a k3d cluster with Flux |
 
-Every request goes through the same four steps, and every scenario file is labelled with them:
-**Step 1 - Entrypoint** (the port) → **Step 2 - Router** (matches the request) → **Step 3 - Middleware** (changes it) → **Step 4 - Service** (the backend).
+Every request goes through the same four steps:
+**Entrypoint** (the port) → **Router** (matches the request) → **Middleware** (changes it) → **Service** (the backend).
+The workshop deck walks through them with the real files from this repo: https://laughingbiscuit.github.io/quick-traefik-demos/
 
 ## Run it
 
@@ -38,7 +39,7 @@ Use port `8000` for the VM. The VM's dashboard is at http://localhost:8001/dashb
 
 ## Add a scenario
 
-1. `file-provider/scenarios/01-<name>.yaml` and `k8s-providers/scenarios/01-<name>*.yaml`, with the same Step 1-4 comments, and list them in `enabled.txt` / `kustomization.yaml`.
+1. `file-provider/scenarios/01-<name>.yaml` and `k8s-providers/scenarios/01-<name>*.yaml`, listed in `enabled.txt` / `kustomization.yaml`.
 2. `tests/01-<name>.hurl`. It runs against both demos, so where they answer differently, accept either (see `X-Route` in `tests/00-passthrough.hurl`).
 3. A backend it needs (Redis, Keycloak, ...) goes in `file-provider/stack/compose.yaml` and `k8s-providers/stack/`.
 
@@ -56,7 +57,7 @@ Use port `8000` for the VM. The VM's dashboard is at http://localhost:8001/dashb
 - Both demos use the same licence, so they show up as one gateway. Use a token per gateway before demoing API Management.
 - `./demo.sh k8s` uses its own kubeconfig for `k8s-demo`; your own `kubectl` uses your current context, so check it mid-demo.
 - Gitea is `localhost:3000`, user `demo` / `Passw0rd!`: fine for a lab, nowhere else.
-- `docs.sh` (needs `m4` and `yq`) builds `index.md` from `docs/`.
+- **The deck:** `./docs.sh` builds `docs/deck.md.m4` into `_site/index.html` (needs `m4`, `yq`, `pandoc` and [mdp2html](https://github.com/laughingbiscuit/mdp2html)). `.github/workflows/pages.yml` does the same on every push to `main` and publishes it to GitHub Pages.
 
 ## Disclaimer
 

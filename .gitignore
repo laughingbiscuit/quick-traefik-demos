@@ -1,1 +1,12 @@
+# Secrets
 .env
+
+# Generated: ./docs.sh output (published by .github/workflows/pages.yml)
+_site/
+# Generated: m4 or hurl --report-html run from the repo root
+/deck.md
+/index.html
+/store/
+
+# OS clutter
+.DS_Store

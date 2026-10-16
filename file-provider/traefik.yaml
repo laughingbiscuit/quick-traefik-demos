@@ -2,7 +2,6 @@
 # installs it and Traefik restarts when it changes. Everything else (routers,
 # middlewares, services, the dashboard) is dynamic: hot-reloaded from Git, no restart.
 
-# Step 1 - Entrypoint
 entryPoints:
   web:
     address: ":8000"       # demo traffic
