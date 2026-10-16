@@ -1,20 +1,26 @@
-# Passthrough: /passthrough goes through the addForwardedHeaders middleware to whoami.
+# Passthrough: /passthrough goes through the addHeaders middleware to whoami.
 #   curl -i http://localhost:8000/passthrough
+# Step 1 - Entrypoint: "web" (:8000) is in traefik-install-conf/00-entrypoints.yaml
 http:
+  # Step 2 - Router
+  # One router for every /passthrough request. The Kubernetes demo has three
+  # (Ingress, IngressRoute, HTTPRoute), picked by ?route=; here the query is ignored.
   routers:
     whoami:
       rule: PathPrefix(`/passthrough`)
       entryPoints: [web]
-      middlewares: [addForwardedHeaders]
+      middlewares: [addHeaders]
       service: whoami
+  # Step 3 - Middleware
+  # X-Route names the route that answered (tests/00-passthrough.hurl checks it).
   middlewares:
-    addForwardedHeaders:
-      headers: 
+    addHeaders:
+      headers:
         customResponseHeaders:
-          X-Demo: "true"
+          X-Route: file
+  # Step 4 - Service
   services:
     whoami:
       loadBalancer:
         servers:
           - url: http://localhost:9000
- 

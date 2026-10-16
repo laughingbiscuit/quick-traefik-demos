@@ -27,16 +27,6 @@ EOF
 set +x   # keep the token off screen
 echo "TRAEFIK_HUB_TOKEN=$HUB_TOKEN" > /etc/traefik/traefik.env
 chmod 600 /etc/traefik/traefik.env
-# An offline licence (a JWT whose claims say "offline": true) needs hub.offline: true,
-# or Hub exits with "offline mode configuration mismatch". gitops-sync appends this part.
-claims=$(printf %s "$HUB_TOKEN" | cut -d. -f2 | tr '_-' '/+')
-while [ $(( ${#claims} % 4 )) -ne 0 ]; do claims="$claims="; done
-if printf %s "$claims" | base64 -d 2>/dev/null | grep -Eq '"offline": ?true'; then
-  printf 'hub:\n  offline: true\n' > /etc/traefik/local-static.yaml
-else
-  : > /etc/traefik/local-static.yaml
-fi
-unset claims
 set -x
 
 mkdir -p /etc/gitops
@@ -59,12 +49,11 @@ rm -rf /tmp/enabled && mkdir -m 755 /tmp/enabled
 grep -vE '^[[:space:]]*(#|$)' $SCENARIOS/enabled.txt | (cd $SCENARIOS && xargs -r cp -t /tmp/enabled)
 mkdir -p $TRAEFIK_CONFIG && rsync -a --delete --exclude=/_root.yaml /tmp/enabled/ $TRAEFIK_CONFIG/
 
-# Static config is the concatenation of the parts listed in traefik-install-conf/enabled.txt,
-# plus local-static.yaml from vm-provision.sh (hub.offline for an offline licence).
+# Static config is the concatenation of the parts listed in traefik-install-conf/enabled.txt.
 # Only rewrite it when it differs, or the path unit would restart Traefik
 # on every run.
 STATIC=$DEMO/traefik-install-conf
-{ grep -vE '^[[:space:]]*(#|$)' $STATIC/enabled.txt | (cd $STATIC && xargs -r awk 1); cat /etc/traefik/local-static.yaml; } > /tmp/traefik.yaml
+grep -vE '^[[:space:]]*(#|$)' $STATIC/enabled.txt | (cd $STATIC && xargs -r awk 1) > /tmp/traefik.yaml
 cmp -s /tmp/traefik.yaml /etc/traefik/traefik.yaml || install -m 644 /tmp/traefik.yaml /etc/traefik/traefik.yaml
 
 docker compose -p gitops -f $DEMO/stack/compose.yaml up -d --remove-orphans --quiet-pull
@@ -91,7 +80,7 @@ cat > /etc/systemd/system/traefik.service <<'EOF'
 [Unit]
 Description=Traefik Hub
 After=network-online.target
-# Keep retrying: a failed Hub licence check must not stop Traefik for good
+# Keep retrying: one failed start (e.g. the Hub licence check) must not stop Traefik for good
 StartLimitIntervalSec=0
 
 [Service]

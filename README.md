@@ -5,14 +5,14 @@ GitOps demos of Traefik Hub configuration. The same scenarios run two ways:
 | Demo | Traefik config as | Runs on | Synced by |
 |---|---|---|---|
 | `file-provider/` | Traefik's own YAML (file provider) | a Lima VM (any Linux VM works the same way) | a systemd timer pulling Git every 10s |
-| `k8s-providers/` | Kubernetes objects (CRDs; Gateway API later) | a k3d cluster | Flux, every 10s |
+| `k8s-providers/` | Kubernetes objects (Ingress, Traefik CRDs, Gateway API) | a k3d cluster | Flux, every 10s |
 
 Both pull from one repo on a local Gitea, so every change in a demo is a plain `git push`.
 
 ## Prerequisites
 
-- Docker, `k3d`, `kubectl`, `flux`, `limactl`, `git`, `curl`, `hurl`
-- Your Traefik Hub gateway token in `.env`: `cp .env.example .env`, then fill in `HUB_TOKEN`. `.env` is gitignored, and the scripts never print the token. (An exported `HUB_TOKEN` also works when there is no `.env`.)
+- Docker, `k3d`, `kubectl`, `flux`, `limactl`, `git`, `curl`, `hurl` (and `m4`, `yq` for `docs.sh`)
+- Your Traefik Hub gateway token (an online one, not an offline licence) in `.env`: `cp .env.example .env`, then fill in `HUB_TOKEN`. `.env` is gitignored, and the scripts never print the token. (An exported `HUB_TOKEN` also works when there is no `.env`.)
 
 ## Run it
 
@@ -37,11 +37,11 @@ Uncomment a scenario, then push your working tree to Gitea:
 ./sync-git.sh
 ```
 
-Within about 10 seconds both demos have it. Comment the line out and run it again to remove it.
+Within about 20 seconds both demos have it (each demo polls Git every 10 seconds). Comment the line out and run it again to remove it.
 
 | Scenario | Try it | You should see |
 |---|---|---|
-| `00-passthrough` | `curl -i localhost:8080/passthrough` | whoami's response with an `X-Demo: true` header. On Kubernetes the same route exists three ways: Ingress (`/passthrough`), IngressRoute (`?route=ingressroute`) and Gateway API HTTPRoute (`?route=httproute`) |
+| `00-passthrough` | `curl -i localhost:8080/passthrough` | whoami's response with an `X-Route` header naming the route that answered. On Kubernetes the route exists three ways: Ingress (`/passthrough`, `X-Route: ingress`), IngressRoute (`?route=ingressroute`) and Gateway API HTTPRoute (`?route=httproute`). On the VM one file router answers all three (`X-Route: file`) |
 | `00-dashboard` (VM only) | open http://localhost:8001/dashboard/ | the Traefik dashboard |
 
 Use port `8000` instead of `8080` for the VM demo. `curl localhost:8080/` always returns `200 OK`: that base route is part of the install, not a scenario.
@@ -50,17 +50,17 @@ Your changes live in this repo, so `cleanup.sh` never deletes them. It only remo
 
 ## Tests
 
-`tests/` has one Hurl file per scenario, named like the scenario (`00-passthrough.yaml` ↔ `00-passthrough.hurl`). `test.sh` runs the tests you name against every demo that is running, and exits non-zero if one fails:
+`tests/` has one Hurl file per scenario that both demos have, named like the scenario (`00-passthrough.yaml` ↔ `00-passthrough.hurl`); `00-dashboard` is VM-only and has none. Each file must pass on both demos: where they differ, the assertion accepts either answer (see `X-Route` in `00-passthrough.hurl`). `test.sh` runs the tests you name against every demo that is running, and exits non-zero if one fails:
 
 ```bash
 ./test.sh tests/00-passthrough.hurl
 ```
 
-It retries for up to 20 seconds, so you can run it straight after a push; a genuine failure takes those 20 seconds to report.
+It retries for up to 20 seconds, so you can run it straight after `./sync-git.sh`; a genuine failure takes those 20 seconds to report.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push to GitHub: it builds everything, enables every scenario, pushes that to Gitea with `sync-git.sh`, and runs every test on both demos. Add your Hub token as a repository secret called `HUB_TOKEN`.
+`.github/workflows/ci.yml` runs on every push to GitHub: it builds everything, enables every scenario, pushes that to Gitea with `sync-git.sh`, and runs every test on both demos. Add your (online) Hub token as a repository secret called `HUB_TOKEN`.
 
 Lima isn't practical on GitHub's hosted runners (the Apple Silicon macOS runners can't run nested VMs), so in CI the Ubuntu runner itself is the VM: the workflow runs `file-provider/vm-provision.sh` on it directly, the same script Lima runs.
 
@@ -97,7 +97,7 @@ quick-traefik-demos/
 
 ## Adding things
 
-- **A scenario:** add `01-<name>.yaml` to both `scenarios/` folders (file-provider YAML on one side, Kubernetes objects on the other) and `tests/01-<name>.hurl`, and list it in `enabled.txt` and `kustomization.yaml`.
+- **A scenario:** add `01-<name>.yaml` to both `scenarios/` folders (file-provider YAML on one side, Kubernetes objects on the other) and `tests/01-<name>.hurl`, and list it in `enabled.txt` and `kustomization.yaml`. Number the parts the same way on both sides (`Step 1 - Entrypoint` ... `Step 4 - Service`) so they can be shown side by side.
 - **A component** (Keycloak, Redis, ...): add it to `file-provider/stack/compose.yaml` on the VM (publish its port on 127.0.0.1 for Traefik to reach), or add a manifest to `k8s-providers/stack/` and list it in its `kustomization.yaml` on Kubernetes.
 - **Switching a component off:** comment it out and push, in `stack/compose.yaml` on the VM (`compose up --remove-orphans` removes its container) or in `stack/kustomization.yaml` on Kubernetes (Flux prunes it). The `demo` namespace has its own file, `00-demo-namespace.yaml`: deleting a namespace deletes everything in it, including the scenarios, so keep it on.
 
@@ -109,7 +109,7 @@ quick-traefik-demos/
 
 ## Gotchas
 
-- **Online or offline token:** both work. `vm-provision.sh` reads the token's `offline` claim and adds `hub.offline: true` to the VM's static config when it is set: without it Hub exits with "offline mode configuration mismatch". Kubernetes runs an offline token without the flag, but then API Management objects are refused.
+- **Online token only, for now.** An offline licence makes Hub on the VM exit with "offline mode configuration mismatch" (it needs `hub.offline: true`), while Kubernetes runs it but refuses API Management objects. The air-gapped setup will be its own scenario with its own token variable.
 - Both demos share one Hub licence, so they appear as the same gateway. That is fine for these scenarios; use a separate token per gateway before demoing API Management.
 - Other tools can switch your current kubectl context at any time. The bootstrap doesn't depend on it (it uses a kubeconfig for `k8s-demo` only), but your own `kubectl` commands do, so check `kubectl config current-context` mid-demo.
 - Gitea runs on `localhost:3000` with user `demo` / `Passw0rd!`. That is fine for a lab, but don't reuse it anywhere else.

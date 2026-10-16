@@ -33,7 +33,7 @@ spec:
       token: traefik-hub-license   # Secret name; also switches the image to ghcr.io/traefik/traefik-hub
     image:
       tag: v3.21.2                 # only the tag: setting image.repository too gives ghcr.io/ghcr.io/...
-    # The "web" entrypoint, explicit: container port 8000, exposed as :80 by the k3d load balancer.
+    # Step 1 - Entrypoint: "web", explicit: container port 8000, exposed as :80 by the k3d load balancer.
     ports:
       web:
         port: 8000
