@@ -1,0 +1,34 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: route-basicauth
+  namespace: demo
+spec:
+  entryPoints: [web]
+  routes:
+    - match: PathPrefix(`/basic-auth`)
+      kind: Rule
+      middlewares:
+        - name: basic-auth
+      services:
+        - name: whoami
+          port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: basic-auth
+  namespace: demo
+spec:
+  basicAuth:
+    secret: secret-basic-auth
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: secret-basic-auth
+  namespace: demo
+type: Opaque
+stringData:
+  users: |
+    user:$2y$05$f7uHaDa0PnGiJvsacFp0r.kf9TrIaVtJaq3WdzY3UUFLNzVJuTGkO

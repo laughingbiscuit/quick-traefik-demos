@@ -10,7 +10,6 @@ http:
       headers:
         customResponseHeaders:
           X-Route: file
-  # Step 4 - Service
   services:
     whoami:
       loadBalancer:

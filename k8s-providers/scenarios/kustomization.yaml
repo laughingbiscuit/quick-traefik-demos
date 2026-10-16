@@ -5,3 +5,4 @@ resources:
   - 00-passthrough-ingress.yaml
   - 00-passthrough-ingressroute.yaml
   - 00-passthrough-httproute.yaml
+  - 00-security-basicauth.yaml

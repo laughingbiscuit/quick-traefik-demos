@@ -112,9 +112,9 @@ m4_esyscmd([[[sed '1,/^---$/d' k8s-providers/stack/01-whoami.yaml]]])
 ## File Provider Entrypoint, Route, Middleware, Service
 
 ```
-# file-provider/traefik.yaml
+# file-provider/traefik-static.yaml
 
-m4_esyscmd([[[yq '.entryPoints' file-provider/traefik.yaml]]])
+m4_esyscmd([[[yq '.entryPoints' file-provider/traefik-static.yaml]]])
 ```
 
 ```

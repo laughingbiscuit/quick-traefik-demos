@@ -1,0 +1,17 @@
+http:
+  routers:
+    route-basicauth:
+      rule: PathPrefix(`/basic-auth`)
+      entryPoints: [web]
+      middlewares: [demoBasicAuth]
+      service: whoami
+  middlewares:
+    demoBasicAuth:
+      basicAuth:
+        users:
+          - "user:$2y$05$f7uHaDa0PnGiJvsacFp0r.kf9TrIaVtJaq3WdzY3UUFLNzVJuTGkO"
+  services:
+    whoami:
+      loadBalancer:
+        servers:
+          - url: http://localhost:9000
