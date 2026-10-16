@@ -1,0 +1,19 @@
+# Base route: everything goes to whoami.
+#   curl http://localhost:8000/
+http:
+  routers:
+    whoami:
+      rule: PathPrefix(`/`)
+      entryPoints: [web]
+      middlewares: [addForwardedHeaders]
+      service: whoami
+  services:
+    whoami:
+      loadBalancer:
+        servers:
+          - url: http://whoami:80
+  middlewares:
+    addForwardedHeaders:
+      headers: 
+        customResponseHeaders:
+          X-Demo: "true"
