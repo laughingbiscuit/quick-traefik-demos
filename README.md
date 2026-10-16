@@ -109,6 +109,7 @@ quick-traefik-demos/
 
 ## Gotchas
 
+- **Online or offline token:** both work. `vm-provision.sh` reads the token's `offline` claim and adds `hub.offline: true` to the VM's static config when it is set: without it Hub exits with "offline mode configuration mismatch". Kubernetes runs an offline token without the flag, but then API Management objects are refused.
 - Both demos share one Hub licence, so they appear as the same gateway. That is fine for these scenarios; use a separate token per gateway before demoing API Management.
 - Other tools can switch your current kubectl context at any time. The bootstrap doesn't depend on it (it uses a kubeconfig for `k8s-demo` only), but your own `kubectl` commands do, so check `kubectl config current-context` mid-demo.
 - Gitea runs on `localhost:3000` with user `demo` / `Passw0rd!`. That is fine for a lab, but don't reuse it anywhere else.
