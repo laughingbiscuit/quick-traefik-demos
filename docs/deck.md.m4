@@ -11,13 +11,36 @@ date: m4_esyscmd([[[date +%d/%m/%y]]])
 
 # Introduction
 
-TODO
+Traefik provides a self-configuring layer to route, secure and observe 
+  traffic across VMs, K8s, APIs, MCP and LLMs in a single binary
 
 ---
 
 # Lab Environment
 
-TODO
+TL;DR:
+
+- Kubernetes with k3d
+- VM with Lima
+- GitOps with Gitea + Flux
+- Testing with curl, hurl and hey
+
+You can verify the test results and try yourself with this [repo](https://github.com/laughingbiscuit/quick-traefik-demos)
+
+---
+
+# Installing Traefik 
+
+One binary that runs on:
+
+- Kubernetes via Helm
+- Docker / Docker Compose
+- Hashicorp Nomad 
+- Linux under systemd (connected or fully air-gapped)
+- Cloud marketplaces
+- Also available as a FIPS 140-3 Hardened Image
+
+This demo uses Flux/Helm for Kubernetes and the binary in systemd on VM
 
 ---
 
@@ -68,6 +91,8 @@ m4_esyscmd([[[yq 'select(.kind == "HelmRelease") | .spec.values | {"ports": .por
 m4_esyscmd([[[sed '/^---$/,$d' k8s-providers/scenarios/00-passthrough-ingress.yaml]]])
 ```
 
+Annotations are validated at runtime :-(
+
 ---
 
 ## Kubernetes Route Options - IngressRoute
@@ -88,6 +113,8 @@ m4_esyscmd([[[sed '/^---$/,$d' k8s-providers/scenarios/00-passthrough-ingressrou
 m4_esyscmd([[[sed '/^---$/,$d' k8s-providers/scenarios/00-passthrough-httproute.yaml]]])
 ```
 
+Annotations are validated at deploy time :-)
+
 ---
 
 ## Middleware and Service
@@ -101,6 +128,7 @@ m4_esyscmd([[[sed '1,/^---$/d' k8s-providers/scenarios/00-passthrough-ingress.ya
 ```
 
 and the corresponding Service:
+
 ```
 # k8s-providers/stack/01-whoami.yaml
 
@@ -127,10 +155,13 @@ m4_include([[[file-provider/scenarios/00-passthrough.yaml]]])
 
 ## Result
 
-```
-# tests/00-passthrough.hurl
+We have successfully proxied a request through our Traefik Hub!
 
-m4_include([[[tests/00-passthrough.hurl]]])
 ```
-
-You can verify the test results and try yourself with this [repo](https://github.com/laughingbiscuit/quick-traefik-demos)
+$ curl -I traefik.test:8080/passthrough
+HTTP/1.1 200 OK
+Content-Length: 396
+Content-Type: text/plain; charset=utf-8
+Date: Fri, 16 Oct 2026 13:46:34 GMT
+X-Route: ingress
+```

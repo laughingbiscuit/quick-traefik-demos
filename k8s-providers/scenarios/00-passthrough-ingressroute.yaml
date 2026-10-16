@@ -22,4 +22,4 @@ metadata:
 spec:
   headers:
     customResponseHeaders:
-      X-Route: ingressroute
+      X-Demo-Route: ingressroute

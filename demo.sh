@@ -5,6 +5,7 @@
 #   ./demo.sh test    run tests/*.hurl (or the files you name) against both demos
 #   ./demo.sh rebuild clean, up, then test: a from-scratch check that everything works
 #   ./demo.sh clean   delete everything the demos created (your changes stay in this repo)
+#   ./demo.sh rebuild clean, up, sync and test in one
 # `up` runs the steps `git`, `k8s` and `vm`, which you can also run one at a time.
 set -e
 cd "$(dirname "$0")"
@@ -102,4 +103,5 @@ case $1 in
   clean) clean ;;
   rebuild) clean; git_up; k8s_up; vm_up; test_all ;;
   *)     sed -n '2,8p' "$0"; exit 1 ;;
+
 esac
