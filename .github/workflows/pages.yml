@@ -1,0 +1,43 @@
+# Build the workshop deck (./docs.sh) and publish it to GitHub Pages from main.
+# One-time setup: Settings > Pages > Build and deployment > Source: "GitHub Actions".
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # yq is already on GitHub's Ubuntu runners
+      - name: Install m4, pandoc and mdp2html
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq m4 pandoc
+          sudo curl -sfL -o /usr/local/bin/mdp2html https://github.com/laughingbiscuit/mdp2html/releases/download/v0.1/mdp2html.sh
+          sudo chmod +x /usr/local/bin/mdp2html
+
+      - name: Build the deck
+        run: ./docs.sh
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

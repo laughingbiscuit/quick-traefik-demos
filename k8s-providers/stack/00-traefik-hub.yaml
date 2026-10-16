@@ -41,10 +41,9 @@ spec:
     gateway:
       listeners:
         web:
-          port: 8000               # must match ports.web.port
+          port: 8000
           namespacePolicy:
-            from: All              # let HTTPRoutes in the demo namespace attach
-    # Gateway API: needs the CRDs that `./demo.sh k8s` installs before Flux.
+            from: All
     providers:
       kubernetesGateway:
         enabled: true
