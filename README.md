@@ -17,28 +17,27 @@ Both pull from one repo on a local Gitea, so every change in a demo is a plain `
 ## Run it
 
 ```bash
-./bootstrap-git.sh               # Gitea on :3000, and its repo cloned into gitops-demo-repo/
-./k8s-providers/bootstrap.sh     # k3d + Flux + Hub        -> http://localhost:8080
-./file-provider/bootstrap.sh     # Lima VM + Docker + Hub  -> http://localhost:8000 (dashboard :8001)
+./bootstrap-git.sh               # Gitea on :3000, this repo pushed to it as the `gitea` remote
+./k8s-providers/k3s-bootstrap.sh  # k3d + Flux + Hub        -> http://localhost:8080
+./file-provider/lima-bootstrap.sh # Lima VM + Docker + Hub  -> http://localhost:8000 (dashboard :8001)
 ```
 
 Run either demo or both. Each takes a few minutes the first time. To rebuild, run `./cleanup.sh` first: a bootstrap stops if its cluster or VM already exists.
 
 ## Demo a scenario
 
-You demo in `gitops-demo-repo/`, a clone of the Gitea repo. Each demo has a list of what is switched on:
+You demo in this repo. The demos watch the Gitea copy (remote `gitea`, branch `main`), so a change only takes effect once you push it there with `./sync-git.sh`. Each demo has a list of what is switched on:
 
-- `gitops-demo-repo/file-provider/enabled.txt`
-- `gitops-demo-repo/k8s-providers/kustomization.yaml`
+- `file-provider/scenarios/enabled.txt`
+- `k8s-providers/scenarios/kustomization.yaml`
 
-Uncomment a scenario, then push it like any Git change:
+Uncomment a scenario, then push your working tree to Gitea:
 
 ```bash
-cd gitops-demo-repo
-git commit -am "Enable caching" && git push
+./sync-git.sh
 ```
 
-Within about 10 seconds both demos have it. Comment the line out and push again to remove it.
+Within about 10 seconds both demos have it. Comment the line out and run it again to remove it.
 
 | Scenario | Try it | You should see |
 |---|---|---|
@@ -48,7 +47,7 @@ Within about 10 seconds both demos have it. Comment the line out and push again 
 
 Use port `8000` instead of `8080` for the VM demo.
 
-`gitops-demo-repo/` is a throwaway working copy: `bootstrap-git.sh` seeds it from the `scenarios/` folders in this repo, and `cleanup.sh` deletes it. To keep a change, make it in `scenarios/` too.
+Your changes live in this repo, so `cleanup.sh` never deletes them. It only removes the `gitea` remote and the Gitea container; `bootstrap-git.sh` pushes your working tree to a fresh Gitea.
 
 ## Tests
 
@@ -62,29 +61,31 @@ It retries for up to 20 seconds, so you can run it straight after a push; a genu
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push to GitHub: it builds everything, enables every scenario with a commit in `gitops-demo-repo/`, and runs every test on both demos. Add your Hub token as a repository secret called `HUB_TOKEN`.
+`.github/workflows/ci.yml` runs on every push to GitHub: it builds everything, enables every scenario with a commit pushed to Gitea, and runs every test on both demos. Add your Hub token as a repository secret called `HUB_TOKEN`.
 
-Lima isn't practical on GitHub's hosted runners (the Apple Silicon macOS runners can't run nested VMs), so in CI the Ubuntu runner itself is the VM: the workflow runs `file-provider/provision.sh` on it directly, the same script Lima runs.
+Lima isn't practical on GitHub's hosted runners (the Apple Silicon macOS runners can't run nested VMs), so in CI the Ubuntu runner itself is the VM: the workflow runs `file-provider/vm-provision.sh` on it directly, the same script Lima runs.
 
 ## Layout
 
 ```
 quick-traefik-demos/
-├── bootstrap-git.sh          # Gitea + the gitops-demo-repo/ working copy
+├── bootstrap-git.sh          # Gitea, and pushes this repo to it
+├── sync-git.sh               # push the working tree to Gitea (no commit needed)
 ├── test.sh                   # run tests against whichever demos are running
 ├── cleanup.sh                # remove everything the demos created
 ├── .github/workflows/ci.yml  # GitHub Actions: build, enable everything, test
 ├── tests/                    # one Hurl file per scenario, shared by both demos
 ├── file-provider/
-│   ├── bootstrap.sh          # create the Lima VM, run provision.sh on it
-│   ├── provision.sh          # any Linux VM: Docker + the Git sync timer
-│   └── scenarios/            # template for gitops-demo-repo/file-provider/
+│   ├── lima-bootstrap.sh     # create the Lima VM, run vm-provision.sh on it
+│   ├── vm-provision.sh       # any Linux VM: Traefik under systemd, Docker, the Git sync timer
+│   └── scenarios/            # what the file-provider demo syncs
 │       ├── enabled.txt       # which scenarios Traefik loads
-│       ├── stack/compose.yaml   # what runs on the VM: Traefik Hub, whoami
+│       ├── static/               # Traefik static config in parts; enabled.txt picks which load
+│       ├── stack/compose.yaml   # Docker dependencies: whoami as a stand-in for Redis, Keycloak, ...)
 │       └── 00-whoami.yaml, 01-rate-limit.yaml, 02-caching.yaml
 └── k8s-providers/
-    ├── bootstrap.sh          # create the k3d cluster, install Flux
-    └── scenarios/            # template for gitops-demo-repo/k8s-providers/
+    ├── k3s-bootstrap.sh      # create the k3d cluster, install Flux
+    └── scenarios/            # what Flux syncs
         ├── kustomization.yaml   # which scenarios Flux applies
         ├── stack/               # what runs in the cluster: Traefik Hub, whoami
         │   └── kustomization.yaml   # which components Flux installs
@@ -96,14 +97,14 @@ quick-traefik-demos/
 ## Adding things
 
 - **A scenario:** add `03-<name>.yaml` to both `scenarios/` folders (file-provider YAML on one side, CRDs on the other) and `tests/03-<name>.hurl`, and list it.
-- **A component** (Keycloak, Redis, ...): add it to `stack/compose.yaml` on the VM, or add a manifest to `stack/` and list it in `stack/kustomization.yaml` on Kubernetes.
+- **A component** (Keycloak, Redis, ...): add it to `stack/compose.yaml` on the VM (publish its port on 127.0.0.1 for Traefik to reach), or add a manifest to `stack/` and list it in `stack/kustomization.yaml` on Kubernetes.
 - **Switching a component off:** comment it out and push, in `stack/compose.yaml` on the VM (`compose up --remove-orphans` removes its container) or in `stack/kustomization.yaml` on Kubernetes (Flux prunes it). The `demo` namespace has its own file, `00-demo-namespace.yaml`: deleting a namespace deletes everything in it, including the scenarios, so keep it on.
 
 ## How it works
 
 - **k8s-providers:** Flux has two Kustomizations. `stack` installs Hub through a HelmRelease; the bootstrap waits until it is healthy before creating `scenarios`, which applies whatever `kustomization.yaml` lists. They are split because the scenarios use Traefik's CRDs, which only exist once Hub is installed.
-- **file-provider:** every 10s `gitops-sync` on the VM pulls the repo, copies the files listed in `enabled.txt` into the folder Traefik watches, and runs `docker compose up` on `stack/compose.yaml`. Traefik hot-reloads the files; compose only recreates containers whose definition changed. Traefik's static config is kept as flags in `compose.yaml`, so changing it restarts Traefik automatically.
-- **Other VM platforms:** `provision.sh` is the portable part. Run it as root with `GITOPS_REPO` and `HUB_TOKEN` set, for example from cloud-init. It installs Docker with Docker's install script if it's missing.
+- **file-provider:** every 10s `gitops-sync` on the VM pulls the repo, copies the files listed in `enabled.txt` into the folder Traefik watches, joins the parts listed in `static/enabled.txt` into Traefik's static config, and runs `docker compose up` on `stack/compose.yaml`. Traefik runs as a binary under systemd and hot-reloads the dynamic files; a systemd path unit restarts it when the joined static config changes. Parts are concatenated, so each top-level key (`entryPoints`, `api`, ...) must live in one part only. Compose only runs the dependencies.
+- **Other VM platforms:** `vm-provision.sh` is the portable part. Run it as root with `GITOPS_REPO` and `HUB_TOKEN` set, for example from cloud-init. It installs Docker with Docker's install script if it's missing, and copies the Traefik binary out of the Hub image.
 
 ## Gotchas
 
@@ -117,7 +118,7 @@ quick-traefik-demos/
 ./cleanup.sh
 ```
 
-It deletes the `k8s-demo` cluster, the `fp-demo` VM, the `gitea` container with its data volume, and the `gitops-demo-repo/` working copy, and nothing else. The next build starts from scratch.
+It deletes the `k8s-demo` cluster, the `fp-demo` VM, the `gitea` container with its data volume, and your local `gitea` git remote, and nothing else. The next build starts from scratch.
 
 ## Disclaimer
 

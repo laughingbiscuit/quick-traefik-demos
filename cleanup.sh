@@ -3,4 +3,4 @@ cd "$(dirname "$0")" || exit
 k3d cluster delete k8s-demo
 limactl delete -f fp-demo
 docker rm -fv gitea
-rm -rf gitops-demo-repo
+git remote remove gitea 2>/dev/null || true

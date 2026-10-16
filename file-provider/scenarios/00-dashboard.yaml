@@ -1,0 +1,9 @@
+# Dashboard on the "traefik" entrypoint. Being dynamic, it can be switched
+# on and off from enabled.txt with no restart.
+#   http://localhost:8001/dashboard/
+http:
+  routers:
+    dashboard:
+      rule: PathPrefix(`/api`) || PathPrefix(`/dashboard`)
+      entryPoints: [traefik]
+      service: api@internal

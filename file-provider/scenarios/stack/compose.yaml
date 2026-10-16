@@ -1,26 +1,10 @@
-# What runs on the VM. The sync job applies this with "compose up", so
-# adding a service here (Keycloak, Redis, ...) and pushing installs it.
-#
-# Traefik's static config is kept as flags here rather than in a static
-# file: a changed flag changes the container, so compose restarts it.
+# Dependencies that run in Docker next to Traefik (Keycloak, Redis, ...).
+# The sync job applies this with "compose up", so adding a service here
+# and pushing installs it. Traefik itself is a binary under systemd, so
+# publish ports on 127.0.0.1 and point scenarios at http://localhost:<port>.
 services:
-  traefik:
-    image: ghcr.io/traefik/traefik-hub:v3.21.2
-    command:
-      - --hub.token=${HUB_TOKEN}
-      - --entrypoints.web.address=:8000
-      - --providers.file.directory=/etc/traefik/dynamic
-      - --providers.file.watch=true
-      - --api.dashboard=true
-      - --api.insecure=true
-      - --log.level=INFO
-    ports:
-      - "8000:8000"   # demo traffic
-      - "8001:8080"   # dashboard
-    volumes:
-      - /opt/gitops/dynamic:/etc/traefik/dynamic:ro
-    restart: unless-stopped
-
-  whoami:
+  whoami:   # placeholder for a real dependency such as Redis
     image: traefik/whoami:v1.10
+    ports:
+      - "127.0.0.1:9000:80"
     restart: unless-stopped
