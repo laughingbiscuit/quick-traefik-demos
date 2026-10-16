@@ -1,5 +1,5 @@
 ###
-# Step 2 Router 
+# Step 2 - Router
 ###
 
 # Version 1 - Kube Ingress with annotations with run-time validation
@@ -11,7 +11,7 @@ metadata:
   namespace: demo
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: web
-    traefik.ingress.kubernetes.io/router.middlewares: demo-add-forwarded-headers@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: demo-add-headers-ingress@kubernetescrd
 spec:
   ingressClassName: traefik
   rules:
@@ -39,7 +39,7 @@ spec:
     - match: PathPrefix(`/passthrough`) && Query(`route`, `ingressroute`)
       kind: Rule
       middlewares:
-        - name: add-forwarded-headers
+        - name: add-headers-ingressroute
       services:
         - name: whoami
           port: 80
@@ -71,7 +71,7 @@ spec:
           extensionRef:
             group: traefik.io
             kind: Middleware
-            name: add-forwarded-headers
+            name: add-headers-httproute
       backendRefs:
         - name: whoami
           port: 80
@@ -81,15 +81,37 @@ spec:
 # Step 3 - Middleware
 ###
 
+# One per route: X-Route names the route that answered, so tests/00-passthrough.hurl
+# can tell them apart (on the VM, the single file router answers "file").
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
-  name: add-forwarded-headers
+  name: add-headers-ingress
   namespace: demo
 spec:
   headers:
     customResponseHeaders:
-      X-Demo: "true"
+      X-Route: ingress
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: add-headers-ingressroute
+  namespace: demo
+spec:
+  headers:
+    customResponseHeaders:
+      X-Route: ingressroute
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: add-headers-httproute
+  namespace: demo
+spec:
+  headers:
+    customResponseHeaders:
+      X-Route: httproute
 ---
 
 ###

@@ -22,4 +22,7 @@ flux create source git gitops --url=$GITOPS_REPO --branch=main --secret-ref=gite
 flux create kustomization stack --source=GitRepository/gitops --path=./k8s-providers/stack --prune=true --interval=10s --wait
 flux create kustomization scenarios --source=GitRepository/gitops --path=./k8s-providers/scenarios --prune=true --interval=10s
 
-until curl -sf http://localhost:8080/; do sleep 2; done
+i=0; until curl -sf http://localhost:8080/; do   # up to 5 minutes
+  i=$((i+1)); [ $i -lt 150 ] || { echo "No answer on :8080 after 5 minutes: kubectl -n traefik logs deploy/traefik"; exit 1; }
+  sleep 2
+done
