@@ -1,3 +1,0 @@
-# Turns the dashboard on. The router that exposes it is dynamic: 00-dashboard.yaml.
-api:
-  dashboard: true

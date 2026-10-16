@@ -1,6 +1,6 @@
 # Passthrough: /passthrough goes through the addHeaders middleware to whoami.
 #   curl -i http://localhost:8000/passthrough
-# Step 1 - Entrypoint: "web" (:8000) is in traefik-install-conf/00-entrypoints.yaml
+# Step 1 - Entrypoint: "web" (:8000), set in ../traefik.yaml
 http:
   # Step 2 - Router
   # One router for every /passthrough request. The Kubernetes demo has three

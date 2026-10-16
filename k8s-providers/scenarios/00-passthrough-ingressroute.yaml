@@ -1,0 +1,32 @@
+# Passthrough, version 2: Traefik's IngressRoute CRD. Checked against its schema
+# when it is applied, and it can match on the query string.
+#   curl -i 'http://localhost:8080/passthrough?route=ingressroute'
+# Step 1 - Entrypoint: "web", set in ../stack/00-traefik-hub.yaml
+
+# Step 2 - Router
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: whoami
+  namespace: demo
+spec:
+  entryPoints: [web]
+  routes:
+    - match: PathPrefix(`/passthrough`) && Query(`route`, `ingressroute`)
+      kind: Rule
+      middlewares:
+        - name: add-headers-ingressroute
+      services:                  # Step 4 - Service: the whoami Service (../stack/01-whoami.yaml)
+        - name: whoami
+          port: 80
+---
+# Step 3 - Middleware: X-Route names the route that answered (tests/00-passthrough.hurl)
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: add-headers-ingressroute
+  namespace: demo
+spec:
+  headers:
+    customResponseHeaders:
+      X-Route: ingressroute

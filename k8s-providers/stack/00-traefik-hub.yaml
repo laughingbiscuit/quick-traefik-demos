@@ -1,5 +1,5 @@
 # Traefik Hub via Flux. The licence Secret (traefik-hub-license, key "token")
-# is created by k3s-bootstrap.sh so it never lands in Git.
+# is created by `./demo.sh k8s` so it never lands in Git.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -44,13 +44,7 @@ spec:
           port: 8000               # must match ports.web.port
           namespacePolicy:
             from: All              # let HTTPRoutes in the demo namespace attach
-    # Gateway API: needs the CRDs that k3s-bootstrap.sh installs before Flux.
+    # Gateway API: needs the CRDs that `./demo.sh k8s` installs before Flux.
     providers:
       kubernetesGateway:
         enabled: true
-    # Base route: GET / returns 200 OK (ping@internal). Used by the bootstrap readiness check.
-    ingressRoute:
-      healthcheck:
-        enabled: true
-        entryPoints: [web]
-        matchRule: Path(`/`)

@@ -1,5 +1,5 @@
 # Build both demos, enable every scenario, test them all.
-# Needs a HUB_TOKEN repository secret (your Traefik Hub gateway token).
+# Needs a HUB_TOKEN repository secret (an online Traefik Hub gateway token).
 name: ci
 
 on:
@@ -13,7 +13,7 @@ jobs:
     env:
       HUB_TOKEN: ${{ secrets.HUB_TOKEN }}
     steps:
-      # Full history: sync-git.sh pushes a commit on top of HEAD, and Gitea rejects shallow pushes
+      # Full history: `demo.sh sync` pushes a commit on top of HEAD, and Gitea rejects shallow pushes
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
@@ -26,28 +26,25 @@ jobs:
           sudo apt-get install -y ./hurl_8.0.1_amd64.deb
 
       - name: Gitea
-        run: ./bootstrap-git.sh
+        run: ./demo.sh git
 
       - name: k8s-providers demo (k3d + Flux)
-        run: ./k8s-providers/k3s-bootstrap.sh
+        run: ./demo.sh k8s
 
       # No Lima here: the runner is the VM
       - name: file-provider demo
         run: |
           sudo HUB_TOKEN="$HUB_TOKEN" GITOPS_REPO=http://demo:Passw0rd%21@localhost:3000/demo/gitops.git sh file-provider/vm-provision.sh
-          timeout 300 sh -c 'until curl -sf http://localhost:8000/; do sleep 2; done'
+          timeout 300 sh -c 'until curl -sf http://localhost:8001/ping; do sleep 2; done'
 
       - name: Enable every scenario
         run: |
           sed -i 's/^# \([0-9]\)/\1/' file-provider/scenarios/enabled.txt
           sed -i 's/^# - /  - /' k8s-providers/scenarios/kustomization.yaml
-          ./sync-git.sh
+          ./demo.sh sync
 
-      - name: Test k8s-providers
-        run: hurl --test --retry 20 --retry-interval 1000 --variable base_url=http://localhost:8080 tests/*.hurl
-
-      - name: Test file-provider
-        run: hurl --test --retry 20 --retry-interval 1000 --variable base_url=http://localhost:8000 tests/*.hurl
+      - name: Test both demos
+        run: ./demo.sh test
 
       - name: Diagnostics
         if: failure()
@@ -57,3 +54,7 @@ jobs:
           sudo journalctl -u gitops-sync --no-pager -n 20 || true
           sudo cat /etc/traefik/traefik.yaml || true
           sudo ss -ltnp || true
+          export KUBECONFIG=$(k3d kubeconfig write k8s-demo 2>/dev/null) || true
+          flux get all -A || true
+          kubectl get pods -A || true
+          kubectl -n traefik logs deploy/traefik --tail=40 || true

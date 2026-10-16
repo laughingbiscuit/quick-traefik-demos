@@ -1,4 +1,0 @@
-# Provides ping@internal for the base route (GET / -> 200 OK) that vm-provision.sh installs.
-# manualRouting: no automatic /ping router, only the service.
-ping:
-  manualRouting: true
