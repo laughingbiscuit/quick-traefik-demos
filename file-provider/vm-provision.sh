@@ -43,7 +43,7 @@ grep -vE '^[[:space:]]*(#|$)' $SCENARIOS/enabled.txt | (cd $SCENARIOS && xargs -
 mkdir -p $TRAEFIK_CONFIG && rsync -a --delete /tmp/enabled/ $TRAEFIK_CONFIG/
 
 # Static config: only rewrite it when it differs, or the path unit would restart Traefik on every run.
-cmp -s $DEMO/traefik.yaml /etc/traefik/traefik.yaml || install -m 644 $DEMO/traefik.yaml /etc/traefik/traefik.yaml
+cmp -s $DEMO/traefik-static.yaml /etc/traefik/traefik-static.yaml || install -m 644 $DEMO/traefik-static.yaml /etc/traefik/traefik-static.yaml
 
 docker compose -p gitops -f $DEMO/stack/compose.yaml up -d --remove-orphans --quiet-pull
 EOF
