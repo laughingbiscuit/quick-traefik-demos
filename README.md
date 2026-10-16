@@ -41,27 +41,26 @@ Within about 10 seconds both demos have it. Comment the line out and run it agai
 
 | Scenario | Try it | You should see |
 |---|---|---|
-| `00-whoami` | `curl localhost:8080/` | whoami's response (base route, always on) |
-| `01-rate-limit` | `for i in $(seq 10); do curl -s -o /dev/null -w '%{http_code} ' localhost:8080/rate-limit; done` | four `200`s, then `429`s |
-| `02-caching` | `curl -sI localhost:8080/cache \| grep -i x-cache-status` (twice) | `MISS`, then `HIT` |
+| `00-passthrough` | `curl -i localhost:8080/passthrough` | whoami's response with an `X-Demo: true` header. On Kubernetes the same route exists three ways: Ingress (`/passthrough`), IngressRoute (`?route=ingressroute`) and Gateway API HTTPRoute (`?route=httproute`) |
+| `00-dashboard` (VM only) | open http://localhost:8001/dashboard/ | the Traefik dashboard |
 
-Use port `8000` instead of `8080` for the VM demo.
+Use port `8000` instead of `8080` for the VM demo. `curl localhost:8080/` always returns `200 OK`: that base route is part of the install, not a scenario.
 
 Your changes live in this repo, so `cleanup.sh` never deletes them. It only removes the `gitea` remote and the Gitea container; `bootstrap-git.sh` pushes your working tree to a fresh Gitea.
 
 ## Tests
 
-`tests/` has one Hurl file per scenario, named like the scenario (`02-caching.yaml` ↔ `02-caching.hurl`). `test.sh` runs the tests you name against every demo that is running, and exits non-zero if one fails:
+`tests/` has one Hurl file per scenario, named like the scenario (`00-passthrough.yaml` ↔ `00-passthrough.hurl`). `test.sh` runs the tests you name against every demo that is running, and exits non-zero if one fails:
 
 ```bash
-./test.sh tests/00-whoami.hurl tests/01-rate-limit.hurl
+./test.sh tests/00-passthrough.hurl
 ```
 
 It retries for up to 20 seconds, so you can run it straight after a push; a genuine failure takes those 20 seconds to report.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push to GitHub: it builds everything, enables every scenario with a commit pushed to Gitea, and runs every test on both demos. Add your Hub token as a repository secret called `HUB_TOKEN`.
+`.github/workflows/ci.yml` runs on every push to GitHub: it builds everything, enables every scenario, pushes that to Gitea with `sync-git.sh`, and runs every test on both demos. Add your Hub token as a repository secret called `HUB_TOKEN`.
 
 Lima isn't practical on GitHub's hosted runners (the Apple Silicon macOS runners can't run nested VMs), so in CI the Ubuntu runner itself is the VM: the workflow runs `file-provider/vm-provision.sh` on it directly, the same script Lima runs.
 
@@ -74,36 +73,38 @@ quick-traefik-demos/
 ├── test.sh                   # run tests against whichever demos are running
 ├── cleanup.sh                # remove everything the demos created
 ├── .github/workflows/ci.yml  # GitHub Actions: build, enable everything, test
+├── docs.sh                   # build index.md from docs/ (m4 + yq)
+├── docs/                     # walkthrough per scenario, pulling in the real config files
 ├── tests/                    # one Hurl file per scenario, shared by both demos
 ├── file-provider/
 │   ├── lima-bootstrap.sh     # create the Lima VM, run vm-provision.sh on it
 │   ├── vm-provision.sh       # any Linux VM: Traefik under systemd, Docker, the Git sync timer
-│   └── scenarios/            # what the file-provider demo syncs
+│   ├── traefik-install-conf/ # Traefik static config in parts; its enabled.txt picks which load
+│   ├── stack/compose.yaml    # Docker dependencies: whoami as a stand-in for Redis, Keycloak, ...
+│   └── scenarios/            # the dynamic config on show
 │       ├── enabled.txt       # which scenarios Traefik loads
-│       ├── static/               # Traefik static config in parts; enabled.txt picks which load
-│       ├── stack/compose.yaml   # Docker dependencies: whoami as a stand-in for Redis, Keycloak, ...)
-│       └── 00-whoami.yaml, 01-rate-limit.yaml, 02-caching.yaml
+│       └── 00-dashboard.yaml, 00-passthrough.yaml
 └── k8s-providers/
     ├── k3s-bootstrap.sh      # create the k3d cluster, install Flux
-    └── scenarios/            # what Flux syncs
+    ├── stack/                # what runs in the cluster: Traefik Hub, whoami
+    │   └── kustomization.yaml   # which components Flux installs
+    └── scenarios/            # the Kubernetes objects on show
         ├── kustomization.yaml   # which scenarios Flux applies
-        ├── stack/               # what runs in the cluster: Traefik Hub, whoami
-        │   └── kustomization.yaml   # which components Flux installs
-        └── 00-whoami.yaml, 01-rate-limit.yaml, 02-caching.yaml
+        └── 00-passthrough.yaml
 ```
 
-`stack/` is what the demo runs on. The numbered files are the Traefik configuration on show.
+`stack/` and `traefik-install-conf/` are the install: what the demo runs on. `scenarios/` is the Traefik configuration on show.
 
 ## Adding things
 
-- **A scenario:** add `03-<name>.yaml` to both `scenarios/` folders (file-provider YAML on one side, CRDs on the other) and `tests/03-<name>.hurl`, and list it.
-- **A component** (Keycloak, Redis, ...): add it to `stack/compose.yaml` on the VM (publish its port on 127.0.0.1 for Traefik to reach), or add a manifest to `stack/` and list it in `stack/kustomization.yaml` on Kubernetes.
+- **A scenario:** add `01-<name>.yaml` to both `scenarios/` folders (file-provider YAML on one side, Kubernetes objects on the other) and `tests/01-<name>.hurl`, and list it in `enabled.txt` and `kustomization.yaml`.
+- **A component** (Keycloak, Redis, ...): add it to `file-provider/stack/compose.yaml` on the VM (publish its port on 127.0.0.1 for Traefik to reach), or add a manifest to `k8s-providers/stack/` and list it in its `kustomization.yaml` on Kubernetes.
 - **Switching a component off:** comment it out and push, in `stack/compose.yaml` on the VM (`compose up --remove-orphans` removes its container) or in `stack/kustomization.yaml` on Kubernetes (Flux prunes it). The `demo` namespace has its own file, `00-demo-namespace.yaml`: deleting a namespace deletes everything in it, including the scenarios, so keep it on.
 
 ## How it works
 
 - **k8s-providers:** Flux has two Kustomizations. `stack` installs Hub through a HelmRelease; the bootstrap waits until it is healthy before creating `scenarios`, which applies whatever `kustomization.yaml` lists. They are split because the scenarios use Traefik's CRDs, which only exist once Hub is installed.
-- **file-provider:** every 10s `gitops-sync` on the VM pulls the repo, copies the files listed in `enabled.txt` into the folder Traefik watches, joins the parts listed in `static/enabled.txt` into Traefik's static config, and runs `docker compose up` on `stack/compose.yaml`. Traefik runs as a binary under systemd and hot-reloads the dynamic files; a systemd path unit restarts it when the joined static config changes. Parts are concatenated, so each top-level key (`entryPoints`, `api`, ...) must live in one part only. Compose only runs the dependencies.
+- **file-provider:** every 10s `gitops-sync` on the VM pulls the repo, copies the files listed in `enabled.txt` into the folder Traefik watches, joins the parts listed in `traefik-install-conf/enabled.txt` into Traefik's static config, and runs `docker compose up` on `stack/compose.yaml`. Traefik runs as a binary under systemd and hot-reloads the dynamic files; a systemd path unit restarts it when the joined static config changes. Parts are concatenated, so each top-level key (`entryPoints`, `api`, ...) must live in one part only. Compose only runs the dependencies.
 - **Other VM platforms:** `vm-provision.sh` is the portable part. Run it as root with `GITOPS_REPO` and `HUB_TOKEN` set, for example from cloud-init. It installs Docker with Docker's install script if it's missing, and copies the Traefik binary out of the Hub image.
 
 ## Gotchas

@@ -4,13 +4,13 @@ HTTP 200
 body contains "Hostname:"
 header "X-Demo" contains "true"
 
-GET {{base_url}}/passthrough?route=ingress-route
+GET {{base_url}}/passthrough?route=ingressroute
 HTTP 200
 [Asserts]
 body contains "Hostname:"
 header "X-Demo" contains "true"
 
-GET {{base_url}}/passthrough?route=http-route
+GET {{base_url}}/passthrough?route=httproute
 HTTP 200
 [Asserts]
 body contains "Hostname:"

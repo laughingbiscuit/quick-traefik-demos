@@ -15,11 +15,11 @@ Service - the load-balanced pool of backend instances that receives the request,
 ## Kubernetes Providers
 
 ```
-# k8s-providers/scenarios/stack/00-traefik-hub.yaml
+# k8s-providers/stack/00-traefik-hub.yaml
 ###
 # Step 1 - Entrypoint
 ###
-m4_esyscmd([[[yq 'select(.kind == "HelmRelease") | .spec.values | {"ports": .ports, "gateway": .gateway}' k8s-providers/scenarios/stack/00-traefik-hub.yaml]]])
+m4_esyscmd([[[yq 'select(.kind == "HelmRelease") | .spec.values | {"ports": .ports, "gateway": .gateway}' k8s-providers/stack/00-traefik-hub.yaml]]])
 ```
 
 ```
@@ -30,8 +30,8 @@ m4_include([[[k8s-providers/scenarios/00-passthrough.yaml]]])
 ## File Provider
 
 ```
-# file-provider/scenarios/traefik-install-conf/00-entrypoints.yaml
-m4_include([[[file-provider/scenarios/traefik-install-conf/00-entrypoints.yaml]]])
+# file-provider/traefik-install-conf/00-entrypoints.yaml
+m4_include([[[file-provider/traefik-install-conf/00-entrypoints.yaml]]])
 ```
 
 ```

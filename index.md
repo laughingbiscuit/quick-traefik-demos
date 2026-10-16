@@ -16,7 +16,7 @@ Service - the load-balanced pool of backend instances that receives the request,
 ## Kubernetes Providers
 
 ```
-# k8s-providers/scenarios/stack/00-traefik-hub.yaml
+# k8s-providers/stack/00-traefik-hub.yaml
 ###
 # Step 1 - Entrypoint
 ###
@@ -73,8 +73,10 @@ metadata:
 spec:
   entryPoints: [web]
   routes:
-    - match: PathPrefix(`/passthrough`) && Query(`key`, `route=ingressroute`)
+    - match: PathPrefix(`/passthrough`) && Query(`route`, `ingressroute`)
       kind: Rule
+      middlewares:
+        - name: add-forwarded-headers
       services:
         - name: whoami
           port: 80
@@ -101,6 +103,12 @@ spec:
             - type: Exact
               name: route
               value: "httproute"
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: add-forwarded-headers
       backendRefs:
         - name: whoami
           port: 80
@@ -138,7 +146,7 @@ spec:
 ## File Provider
 
 ```
-# file-provider/scenarios/traefik-install-conf/00-entrypoints.yaml
+# file-provider/traefik-install-conf/00-entrypoints.yaml
 entryPoints:
   web:
     address: ":8000"
@@ -149,8 +157,8 @@ entryPoints:
 
 ```
 # file-provider/scenarios/00-passthrough.yaml
-# Base route: everything goes to whoami.
-#   curl http://localhost:8000/
+# Passthrough: /passthrough goes through the addForwardedHeaders middleware to whoami.
+#   curl -i http://localhost:8000/passthrough
 http:
   routers:
     whoami:
@@ -181,13 +189,13 @@ HTTP 200
 body contains "Hostname:"
 header "X-Demo" contains "true"
 
-GET {{base_url}}/passthrough?route=ingress-route
+GET {{base_url}}/passthrough?route=ingressroute
 HTTP 200
 [Asserts]
 body contains "Hostname:"
 header "X-Demo" contains "true"
 
-GET {{base_url}}/passthrough?route=http-route
+GET {{base_url}}/passthrough?route=httproute
 HTTP 200
 [Asserts]
 body contains "Hostname:"

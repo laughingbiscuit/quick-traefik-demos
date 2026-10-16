@@ -16,11 +16,10 @@ flux create secret git gitea-auth --url=$GITOPS_REPO --username=demo --password=
 kubectl create namespace traefik
 set +x   # keep the token off screen
 kubectl -n traefik create secret generic traefik-hub-license --from-literal=token="$HUB_TOKEN"
-curl -sf -o /dev/null http://localhost:3000/api/healthz || { echo "Gitea is not running on :3000: run ./bootstrap-git.sh first"; exit 1; }
 set -x
 
 flux create source git gitops --url=$GITOPS_REPO --branch=main --secret-ref=gitea-auth --interval=10s
-flux create kustomization stack --source=GitRepository/gitops --path=./k8s-providers/scenarios/stack --prune=true --interval=10s --wait
+flux create kustomization stack --source=GitRepository/gitops --path=./k8s-providers/stack --prune=true --interval=10s --wait
 flux create kustomization scenarios --source=GitRepository/gitops --path=./k8s-providers/scenarios --prune=true --interval=10s
 
 until curl -sf http://localhost:8080/; do sleep 2; done
