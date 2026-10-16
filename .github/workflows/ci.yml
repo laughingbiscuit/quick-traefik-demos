@@ -52,7 +52,7 @@ jobs:
           sudo systemctl status traefik gitops-sync --no-pager || true
           sudo journalctl -u traefik --no-pager -n 60 || true
           sudo journalctl -u gitops-sync --no-pager -n 20 || true
-          sudo cat /etc/traefik/traefik.yaml || true
+          sudo cat /etc/traefik/traefik-static.yaml || true
           sudo ss -ltnp || true
           export KUBECONFIG=$(k3d kubeconfig write k8s-demo 2>/dev/null) || true
           flux get all -A || true

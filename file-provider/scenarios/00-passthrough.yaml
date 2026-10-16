@@ -10,6 +10,7 @@ http:
       headers:
         customResponseHeaders:
           X-Demo-Route: file
+
   services:
     whoami:
       loadBalancer:

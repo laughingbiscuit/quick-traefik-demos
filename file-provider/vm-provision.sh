@@ -75,7 +75,7 @@ StartLimitIntervalSec=0
 [Service]
 User=traefik
 EnvironmentFile=/etc/traefik/traefik.env
-ExecStart=/usr/local/bin/traefik-hub --configFile=/etc/traefik/traefik.yaml
+ExecStart=/usr/local/bin/traefik-hub --configFile=/etc/traefik/traefik-static.yaml
 Restart=on-failure
 RestartSec=2
 
@@ -86,7 +86,7 @@ EOF
 # Restart Traefik when its static config changes (dynamic files hot-reload).
 cat > /etc/systemd/system/traefik-restart.path <<'EOF'
 [Path]
-PathChanged=/etc/traefik/traefik.yaml
+PathChanged=/etc/traefik/traefik-static.yaml
 Unit=traefik-restart.service
 [Install]
 WantedBy=multi-user.target

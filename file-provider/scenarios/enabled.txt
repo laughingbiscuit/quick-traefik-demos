@@ -1,2 +1,3 @@
 # Scenarios Traefik loads. Uncomment one, then ./demo.sh sync
 00-passthrough.yaml
+00-security-basicauth.yaml

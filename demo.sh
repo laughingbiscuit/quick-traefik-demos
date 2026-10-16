@@ -3,6 +3,7 @@
 #   ./demo.sh up      Gitea, then the k8s demo (:8080) and the VM demo (:8000, dashboard :8001)
 #   ./demo.sh sync    push this working tree to Gitea: both demos pick it up within ~20s
 #   ./demo.sh test    run tests/*.hurl (or the files you name) against both demos
+#   ./demo.sh rebuild clean, up, then test: a from-scratch check that everything works
 #   ./demo.sh clean   delete everything the demos created (your changes stay in this repo)
 #   ./demo.sh rebuild clean, up, sync and test in one
 # `up` runs the steps `git`, `k8s` and `vm`, which you can also run one at a time.
@@ -100,6 +101,7 @@ case $1 in
   sync)  sync ;;
   test)  shift; test_all "$@" ;;
   clean) clean ;;
-  rebuild) clean; git_up; k8s_up; vm_up; sync; test_all ;;
-  *)     sed -n '2,7p' "$0"; exit 1 ;;
+  rebuild) clean; git_up; k8s_up; vm_up; test_all ;;
+  *)     sed -n '2,8p' "$0"; exit 1 ;;
+
 esac
