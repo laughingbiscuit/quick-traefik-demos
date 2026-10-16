@@ -12,7 +12,7 @@
       "emailVerified": true,
       "firstName": "Demo",
       "lastName": "Admin",
-      "credentials": [{"type": "password", "value": "Passw0rd!", "temporary": false}],
+      "credentials": [{"type": "password", "value": "Password123", "temporary": false}],
       "realmRoles": ["admin"]
     },
     {
@@ -22,13 +22,13 @@
       "emailVerified": true,
       "firstName": "Demo",
       "lastName": "Guest",
-      "credentials": [{"type": "password", "value": "Passw0rd!", "temporary": false}]
+      "credentials": [{"type": "password", "value": "Password123", "temporary": false}]
     }
   ],
   "clients": [
     {
       "clientId": "traefik",
-      "secret": "traefik-secret",
+      "secret": "Password123",
       "enabled": true,
       "publicClient": false,
       "standardFlowEnabled": true,

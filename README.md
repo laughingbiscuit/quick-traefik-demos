@@ -50,15 +50,15 @@ Use port `8000` for the VM. The VM's dashboard is at http://localhost:8001/dashb
 
 ## Shared services
 
-Docker Compose runs Gitea and the dependencies the scenarios share, on the host (`shared/compose.yaml`). The VM reaches them at `host.lima.internal:<port>`, k8s at `host.k3d.internal:<port>`, you at `localhost:<port>`. They configure themselves headlessly on start.
+Docker Compose runs Gitea and the dependencies the scenarios share, on the host (`shared/compose.yaml`). **Every login is `demo` / `Password123`**: Gitea, Keycloak (and its console), the `00-security-basicauth` scenario, step-ca's provisioner password and Vault's token. (`guest` in Keycloak has the same password but no `admin` role.) The VM reaches them at `host.lima.internal:<port>`, k8s at `host.k3d.internal:<port>`, you at `localhost:<port>`. They configure themselves headlessly on start.
 
 | Service | Port | What it is for | Login |
 |---|---|---|---|
 | Grafana LGTM | `3001` (Grafana), `4317`/`4318` (OTLP) | metrics, logs and traces in one place | none |
 | Redis | `6379` | distributed rate limiting, shared state | none |
-| Keycloak | `8180` | OIDC. Realm `demo`, client `traefik` / `traefik-secret`, users `demo` (role `admin`) and `guest` | `demo` / `Passw0rd!`; console `admin` / `Passw0rd!` |
-| step-ca | `9000` (HTTPS) | PKI and ACME: root and intermediate CA, ACME directory at `/acme/acme/directory`, and the gateways' wildcard certificate (see Gotchas for the challenge ports) | provisioner `admin` / `Passw0rd!` |
-| Vault | `8200` | secrets management: KV at `secret/` | token `root` |
+| Keycloak | `8180` | OIDC. Realm `demo`, client `traefik` (secret `Password123`), users `demo` (role `admin`) and `guest` (no role) | `demo` / `Password123`, for the realm and the console |
+| step-ca | `9000` (HTTPS) | PKI and ACME: root and intermediate CA, ACME directory at `/acme/acme/directory`, and the gateways' wildcard certificate (see Gotchas for the challenge ports) | provisioner `admin`, password `Password123` |
+| Vault | `8200` | secrets management: KV at `secret/` | token `Password123` |
 | OPA | none | `shared/opa/authz.rego`: gateways evaluate it themselves, `./demo.sh test` checks it with `opa test` | |
 | Ollama | `11434` | local LLM for the AI Gateway. Pulls `qwen2.5:0.5b`; set `OLLAMA_MODEL` to change it | none |
 | Toxiproxy | `8474` (API) | latency and failures in front of Redis (`6380`) and the demo API (`9111`, `9112`). Proxies: `shared/toxiproxy/toxiproxy.json` | none |
@@ -82,7 +82,7 @@ The demo API (`api-v1` and `api-v2`, whoami named per version, on `9101` and `91
 - **ACME (step-ca) and the challenge ports.** The directory is `https://<host>:9000/acme/acme/directory`, and the URLs in it follow the host the client used: `host.k3d.internal` from the cluster, `host.lima.internal` from the VM, `localhost` from your machine. Clients must trust the root (`certs/ca.pem`, or `https://localhost:9000/roots.pem`). The catch is validation: step-ca connects to the domain on port 80 (http-01) or 443 (tls-alpn-01), and the ACME standard allows no other port. So **the k8s cluster owns the host's `:80` and `:443`** (alongside `:8080`/`:8443`), and step-ca resolves exactly one name, `whoami.acme.test`, to the host: that is the domain of `00-security-acme`. It sits outside the wildcard on purpose, because Traefik skips ACME for any name that a certificate it already holds covers (its default one is `*.demo.test`). The VM gateway can't do ACME at the same time (it would need its own `:80`/`:443`), and `:80`/`:443` must be free on your machine. Verified with lego, and with Traefik itself in `00-security-acme`: HTTP-01 issues a certificate from step-ca.
 - Keycloak puts `http://localhost:8180` in every token as the issuer, whichever host the client dialled; the VM and the cluster still fetch keys through the host.
 - Everything in `shared/` is lab-only: no passwords on Redis, Vault in dev mode (in memory: a restart loses its secrets), ports open on every interface.
-- Gitea is `localhost:3000`, user `demo` / `Passw0rd!`: fine for a lab, nowhere else.
+- Gitea is `localhost:3000`. Every password in this repo is `Password123`: fine for a lab, nowhere else.
 - **The deck:** `./docs.sh` builds `docs/deck.md.m4` into `_site/index.html` (needs `m4`, `yq`, `pandoc` and [mdp2html](https://github.com/laughingbiscuit/mdp2html)). `.github/workflows/pages.yml` does the same on every push to `main` and publishes it to GitHub Pages.
 
 ## Disclaimer

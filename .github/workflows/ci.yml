@@ -37,7 +37,7 @@ jobs:
       # No Lima here: the runner is the VM
       - name: file-provider demo
         run: |
-          sudo HUB_TOKEN="$HUB_TOKEN" TLS_CERT="$(base64 -w0 certs/tls.crt)" TLS_KEY="$(base64 -w0 certs/tls.key)" GITOPS_REPO=http://demo:Passw0rd%21@localhost:3000/demo/gitops.git sh file-provider/vm-provision.sh
+          sudo HUB_TOKEN="$HUB_TOKEN" TLS_CERT="$(base64 -w0 certs/tls.crt)" TLS_KEY="$(base64 -w0 certs/tls.key)" GITOPS_REPO=http://demo:Password123@localhost:3000/demo/gitops.git sh file-provider/vm-provision.sh
           timeout 300 sh -c 'until curl -sf http://localhost:8001/ping; do sleep 2; done'
 
       - name: Enable every scenario

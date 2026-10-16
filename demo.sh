@@ -12,7 +12,7 @@ set -e
 cd "$(dirname "$0")"
 [ -f .env ] && . ./.env
 SHARED="docker compose -p shared -f shared/compose.yaml"
-GITEA=http://demo:Passw0rd%21@localhost:3000/demo/gitops.git
+GITEA=http://demo:Password123@localhost:3000/demo/gitops.git
 
 wait_for() {   # <seconds> <url> <hint>: poll until the URL answers, or give up
   i=0
@@ -42,9 +42,9 @@ need_token() { : "${HUB_TOKEN:?set HUB_TOKEN in .env (copy .env.example)}"; }
 git_up() {   # Gitea on :3000, with this repo pushed to it as the `gitea` remote
   set -x
   $SHARED up -d --wait --quiet-pull gitea
-  $SHARED exec -T -u git gitea gitea admin user create --admin --username demo --password 'Passw0rd!' \
+  $SHARED exec -T -u git gitea gitea admin user create --admin --username demo --password 'Password123' \
     --email demo@example.com --must-change-password=false
-  curl -fsu demo:'Passw0rd!' -o /dev/null -H 'Content-Type: application/json' \
+  curl -fsu demo:'Password123' -o /dev/null -H 'Content-Type: application/json' \
     -d '{"name":"gitops","default_branch":"main"}' http://localhost:3000/api/v1/user/repos
   git remote remove gitea 2>/dev/null || true
   git remote add gitea "$GITEA"
@@ -69,7 +69,7 @@ shared_up() {   # everything in shared/compose.yaml: Gitea is already up from `g
   wait_for 120 http://localhost:8180/realms/demo "$SHARED logs keycloak"
   wait_for 120 https://localhost:9000/health "$SHARED logs step-ca"
   issue_cert
-  echo "Grafana http://localhost:3001  Keycloak http://localhost:8180 (admin / Passw0rd!)  Vault http://localhost:8200 (token: root)  step-ca https://localhost:9000"
+  echo "Grafana http://localhost:3001  Keycloak http://localhost:8180  Vault http://localhost:8200  (login for all: demo / Password123)  step-ca https://localhost:9000"
 }
 
 k8s_up() {   # k3d cluster, Flux, and Traefik Hub installed by Flux from k8s-providers/stack
@@ -82,7 +82,7 @@ k8s_up() {   # k3d cluster, Flux, and Traefik Hub installed by Flux from k8s-pro
   KUBECONFIG=$(k3d kubeconfig write k8s-demo) && export KUBECONFIG   # immune to other tools switching context
   flux install
   kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
-  flux create secret git gitea-auth --url=$repo --username=demo --password='Passw0rd!'
+  flux create secret git gitea-auth --url=$repo --username=demo --password='Password123'
   kubectl create namespace traefik
   set +x   # keep the token off screen
   kubectl -n traefik create secret generic traefik-hub-license --from-literal=token="$HUB_TOKEN"
@@ -104,7 +104,7 @@ vm_up() {   # Lima VM running file-provider/vm-provision.sh (any Linux VM works 
   set +x   # keep the token off screen
   limactl shell fp-demo sudo HUB_TOKEN="$HUB_TOKEN" \
     TLS_CERT="$(base64 < certs/tls.crt | tr -d '\n')" TLS_KEY="$(base64 < certs/tls.key | tr -d '\n')" \
-    GITOPS_REPO=http://demo:Passw0rd%21@host.lima.internal:3000/demo/gitops.git sh -s < file-provider/vm-provision.sh
+    GITOPS_REPO=http://demo:Password123@host.lima.internal:3000/demo/gitops.git sh -s < file-provider/vm-provision.sh
   wait_for 300 http://localhost:8001/ping "limactl shell fp-demo sudo journalctl -u traefik"
   echo "Dashboard: http://localhost:8001/dashboard/"
 }

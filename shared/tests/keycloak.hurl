@@ -7,10 +7,10 @@ jsonpath "$.issuer" == "http://localhost:8180/realms/demo"
 POST http://localhost:8180/realms/demo/protocol/openid-connect/token
 [FormParams]
 client_id: traefik
-client_secret: traefik-secret
+client_secret: Password123
 grant_type: password
 username: demo
-password: Passw0rd!
+password: Password123
 HTTP 200
 [Asserts]
 jsonpath "$.access_token" exists
