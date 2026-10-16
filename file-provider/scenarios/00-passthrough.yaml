@@ -1,0 +1,18 @@
+http:
+  routers:
+    whoami:
+      rule: PathPrefix(`/passthrough`)
+      entryPoints: [web]
+      middlewares: [addHeaders]
+      service: whoami
+  middlewares:
+    addHeaders:
+      headers:
+        customResponseHeaders:
+          X-Route: file
+  # Step 4 - Service
+  services:
+    whoami:
+      loadBalancer:
+        servers:
+          - url: http://localhost:9000

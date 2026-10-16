@@ -1,0 +1,22 @@
+# Static configuration: the only part Traefik reads at start-up. gitops-sync
+# installs it and Traefik restarts when it changes. Everything else (routers,
+# middlewares, services, the dashboard) is dynamic: hot-reloaded from Git, no restart.
+
+entryPoints:
+  web:
+    address: ":8000"       # demo traffic
+  traefik:
+    address: ":8001"       # dashboard and /ping
+
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+api:
+  dashboard: true          # the router that exposes it is dynamic: dashboard.yaml
+
+ping: {}                   # GET :8001/ping answers OK: the bootstrap's readiness check
+
+log:
+  level: INFO

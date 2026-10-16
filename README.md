@@ -1,123 +1,63 @@
 # quick-traefik-demos
 
-GitOps demos of Traefik Hub configuration. The same scenarios run two ways:
+Small GitOps demos of how Traefik works. Each scenario runs two ways from one Git repo:
 
-| Demo | Traefik config as | Runs on | Synced by |
-|---|---|---|---|
-| `file-provider/` | Traefik's own YAML (file provider) | a Lima VM (any Linux VM works the same way) | a systemd timer pulling Git every 10s |
-| `k8s-providers/` | Kubernetes objects (CRDs; Gateway API later) | a k3d cluster | Flux, every 10s |
+| Demo | Traefik config as | Runs on |
+|---|---|---|
+| `file-provider/` | Traefik's own YAML files, hot-reloaded | a Linux VM (Lima locally), no Kubernetes |
+| `k8s-providers/` | Kubernetes objects: Ingress, IngressRoute, Gateway API | a k3d cluster with Flux |
 
-Both pull from one repo on a local Gitea, so every change in a demo is a plain `git push`.
-
-## Prerequisites
-
-- Docker, `k3d`, `kubectl`, `flux`, `limactl`, `git`, `curl`, `hurl`
-- Your Traefik Hub gateway token in `.env`: `cp .env.example .env`, then fill in `HUB_TOKEN`. `.env` is gitignored, and the scripts never print the token. (An exported `HUB_TOKEN` also works when there is no `.env`.)
+Every request goes through the same four steps:
+**Entrypoint** (the port) → **Router** (matches the request) → **Middleware** (changes it) → **Service** (the backend).
+The workshop deck walks through them with the real files from this repo: https://laughingbiscuit.github.io/quick-traefik-demos/
 
 ## Run it
 
-```bash
-./bootstrap-git.sh               # Gitea on :3000, and its repo cloned into gitops-demo-repo/
-./k8s-providers/bootstrap.sh     # k3d + Flux + Hub        -> http://localhost:8080
-./file-provider/bootstrap.sh     # Lima VM + Docker + Hub  -> http://localhost:8000 (dashboard :8001)
-```
+You need Docker, `k3d`, `kubectl`, `flux`, `limactl`, `git`, `curl` and `hurl`, and an online Traefik Hub gateway token: `cp .env.example .env`, then fill in `HUB_TOKEN`.
 
-Run either demo or both. Each takes a few minutes the first time. To rebuild, run `./cleanup.sh` first: a bootstrap stops if its cluster or VM already exists.
+```bash
+./demo.sh up      # Gitea, then k8s on http://localhost:8080 and the VM on http://localhost:8000
+./demo.sh test    # run every test against both demos
+./demo.sh clean   # delete it all; run before `up` to rebuild
+```
 
 ## Demo a scenario
 
-You demo in `gitops-demo-repo/`, a clone of the Gitea repo. Each demo has a list of what is switched on:
-
-- `gitops-demo-repo/file-provider/enabled.txt`
-- `gitops-demo-repo/k8s-providers/kustomization.yaml`
-
-Uncomment a scenario, then push it like any Git change:
+Switch scenarios on or off in `file-provider/scenarios/enabled.txt` and `k8s-providers/scenarios/kustomization.yaml`, then:
 
 ```bash
-cd gitops-demo-repo
-git commit -am "Enable caching" && git push
+./demo.sh sync    # push this working tree to Gitea (no commit needed)
 ```
 
-Within about 10 seconds both demos have it. Comment the line out and push again to remove it.
+Both demos poll Git every 10 seconds, so the change is live within about 20, with no restart: that is the point to show.
 
 | Scenario | Try it | You should see |
 |---|---|---|
-| `00-whoami` | `curl localhost:8080/` | whoami's response (base route, always on) |
-| `01-rate-limit` | `for i in $(seq 10); do curl -s -o /dev/null -w '%{http_code} ' localhost:8080/rate-limit; done` | four `200`s, then `429`s |
-| `02-caching` | `curl -sI localhost:8080/cache \| grep -i x-cache-status` (twice) | `MISS`, then `HIT` |
+| `00-passthrough` | `curl -i localhost:8080/passthrough` | whoami's answer and an `X-Route` header naming the route. On Kubernetes there are three versions: Ingress (`X-Route: ingress`), IngressRoute (`?route=ingressroute`) and Gateway API (`?route=httproute`). On the VM one file router answers all three (`X-Route: file`) |
 
-Use port `8000` instead of `8080` for the VM demo.
+Use port `8000` for the VM. The VM's dashboard is at http://localhost:8001/dashboard/.
 
-`gitops-demo-repo/` is a throwaway working copy: `bootstrap-git.sh` seeds it from the `scenarios/` folders in this repo, and `cleanup.sh` deletes it. To keep a change, make it in `scenarios/` too.
+## Add a scenario
 
-## Tests
+1. `file-provider/scenarios/01-<name>.yaml` and `k8s-providers/scenarios/01-<name>*.yaml`, listed in `enabled.txt` / `kustomization.yaml`.
+2. `tests/01-<name>.hurl`. It runs against both demos, so where they answer differently, accept either (see `X-Route` in `tests/00-passthrough.hurl`).
+3. A backend it needs (Redis, Keycloak, ...) goes in `file-provider/stack/compose.yaml` and `k8s-providers/stack/`.
 
-`tests/` has one Hurl file per scenario, named like the scenario (`02-caching.yaml` ↔ `02-caching.hurl`). `test.sh` runs the tests you name against every demo that is running, and exits non-zero if one fails:
-
-```bash
-./test.sh tests/00-whoami.hurl tests/01-rate-limit.hurl
-```
-
-It retries for up to 20 seconds, so you can run it straight after a push; a genuine failure takes those 20 seconds to report.
-
-## CI
-
-`.github/workflows/ci.yml` runs on every push to GitHub: it builds everything, enables every scenario with a commit in `gitops-demo-repo/`, and runs every test on both demos. Add your Hub token as a repository secret called `HUB_TOKEN`.
-
-Lima isn't practical on GitHub's hosted runners (the Apple Silicon macOS runners can't run nested VMs), so in CI the Ubuntu runner itself is the VM: the workflow runs `file-provider/provision.sh` on it directly, the same script Lima runs.
-
-## Layout
-
-```
-quick-traefik-demos/
-├── bootstrap-git.sh          # Gitea + the gitops-demo-repo/ working copy
-├── test.sh                   # run tests against whichever demos are running
-├── cleanup.sh                # remove everything the demos created
-├── .github/workflows/ci.yml  # GitHub Actions: build, enable everything, test
-├── tests/                    # one Hurl file per scenario, shared by both demos
-├── file-provider/
-│   ├── bootstrap.sh          # create the Lima VM, run provision.sh on it
-│   ├── provision.sh          # any Linux VM: Docker + the Git sync timer
-│   └── scenarios/            # template for gitops-demo-repo/file-provider/
-│       ├── enabled.txt       # which scenarios Traefik loads
-│       ├── stack/compose.yaml   # what runs on the VM: Traefik Hub, whoami
-│       └── 00-whoami.yaml, 01-rate-limit.yaml, 02-caching.yaml
-└── k8s-providers/
-    ├── bootstrap.sh          # create the k3d cluster, install Flux
-    └── scenarios/            # template for gitops-demo-repo/k8s-providers/
-        ├── kustomization.yaml   # which scenarios Flux applies
-        ├── stack/               # what runs in the cluster: Traefik Hub, whoami
-        │   └── kustomization.yaml   # which components Flux installs
-        └── 00-whoami.yaml, 01-rate-limit.yaml, 02-caching.yaml
-```
-
-`stack/` is what the demo runs on. The numbered files are the Traefik configuration on show.
-
-## Adding things
-
-- **A scenario:** add `03-<name>.yaml` to both `scenarios/` folders (file-provider YAML on one side, CRDs on the other) and `tests/03-<name>.hurl`, and list it.
-- **A component** (Keycloak, Redis, ...): add it to `stack/compose.yaml` on the VM, or add a manifest to `stack/` and list it in `stack/kustomization.yaml` on Kubernetes.
-- **Switching a component off:** comment it out and push, in `stack/compose.yaml` on the VM (`compose up --remove-orphans` removes its container) or in `stack/kustomization.yaml` on Kubernetes (Flux prunes it). The `demo` namespace has its own file, `00-demo-namespace.yaml`: deleting a namespace deletes everything in it, including the scenarios, so keep it on.
+`stack/` and `file-provider/traefik.yaml` are the install; `scenarios/` is what you show.
 
 ## How it works
 
-- **k8s-providers:** Flux has two Kustomizations. `stack` installs Hub through a HelmRelease; the bootstrap waits until it is healthy before creating `scenarios`, which applies whatever `kustomization.yaml` lists. They are split because the scenarios use Traefik's CRDs, which only exist once Hub is installed.
-- **file-provider:** every 10s `gitops-sync` on the VM pulls the repo, copies the files listed in `enabled.txt` into the folder Traefik watches, and runs `docker compose up` on `stack/compose.yaml`. Traefik hot-reloads the files; compose only recreates containers whose definition changed. Traefik's static config is kept as flags in `compose.yaml`, so changing it restarts Traefik automatically.
-- **Other VM platforms:** `provision.sh` is the portable part. Run it as root with `GITOPS_REPO` and `HUB_TOKEN` set, for example from cloud-init. It installs Docker with Docker's install script if it's missing.
+- **VM:** every 10 seconds `gitops-sync` pulls Git, copies `dashboard.yaml` and the enabled scenarios into the folder Traefik watches (hot-reloaded, no restart), installs `traefik.yaml` (static: Traefik restarts only when it changes) and runs `docker compose up` for the backends. Traefik itself is a plain binary under systemd. `file-provider/vm-provision.sh` does all of it on any Linux VM: run it as root with `GITOPS_REPO` and `HUB_TOKEN`.
+- **Kubernetes:** Flux applies `k8s-providers/stack/` (Traefik Hub, whoami), then `k8s-providers/scenarios/`. They are separate because the scenarios need the CRDs that Traefik's install brings.
+- **CI** (`.github/workflows/ci.yml`) builds both demos, enables every scenario and runs every test, on each push. It needs the token as a repository secret `HUB_TOKEN`. The Ubuntu runner plays the VM: it runs `vm-provision.sh` directly instead of Lima.
 
 ## Gotchas
 
-- Both demos share one Hub licence, so they appear as the same gateway. That is fine for these scenarios; use a separate token per gateway before demoing API Management.
-- Other tools can switch your current kubectl context at any time. The bootstrap doesn't depend on it (it uses a kubeconfig for `k8s-demo` only), but your own `kubectl` commands do, so check `kubectl config current-context` mid-demo.
-- Gitea runs on `localhost:3000` with user `demo` / `Passw0rd!`. That is fine for a lab, but don't reuse it anywhere else.
-
-## Cleanup
-
-```bash
-./cleanup.sh
-```
-
-It deletes the `k8s-demo` cluster, the `fp-demo` VM, the `gitea` container with its data volume, and the `gitops-demo-repo/` working copy, and nothing else. The next build starts from scratch.
+- **Online token only, for now.** An offline licence makes Hub on the VM exit with "offline mode configuration mismatch" (it needs `hub.offline: true`). The air-gapped setup will be its own scenario with its own token variable.
+- Both demos use the same licence, so they show up as one gateway. Use a token per gateway before demoing API Management.
+- `./demo.sh k8s` uses its own kubeconfig for `k8s-demo`; your own `kubectl` uses your current context, so check it mid-demo.
+- Gitea is `localhost:3000`, user `demo` / `Passw0rd!`: fine for a lab, nowhere else.
+- **The deck:** `./docs.sh` builds `docs/deck.md.m4` into `_site/index.html` (needs `m4`, `yq`, `pandoc` and [mdp2html](https://github.com/laughingbiscuit/mdp2html)). `.github/workflows/pages.yml` does the same on every push to `main` and publishes it to GitHub Pages.
 
 ## Disclaimer
 

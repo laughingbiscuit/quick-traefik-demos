@@ -1,4 +1,2 @@
-# Scenarios Traefik loads. Uncomment one, then git commit -am "..." && git push
-00-whoami.yaml
-01-rate-limit.yaml
-# 02-caching.yaml
+# Scenarios Traefik loads. Uncomment one, then ./demo.sh sync
+00-passthrough.yaml

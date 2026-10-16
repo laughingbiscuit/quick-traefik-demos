@@ -1,5 +1,4 @@
-# Demo backend. Its route is a scenario (00-whoami.yaml): IngressRoutes can't
-# live here, their CRD arrives with the Hub HelmRelease in this same apply.
+# Demo backend: the Deployment and the Service every scenario routes to.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

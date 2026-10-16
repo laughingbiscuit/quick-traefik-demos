@@ -1,4 +1,4 @@
-# Components Flux installs. Comment one out, commit and push to remove it.
+# Components Flux installs. Comment one out, then ./demo.sh sync to remove it.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:

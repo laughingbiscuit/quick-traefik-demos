@@ -1,5 +1,5 @@
 # Traefik Hub via Flux. The licence Secret (traefik-hub-license, key "token")
-# is created by bootstrap.sh so it never lands in Git.
+# is created by `./demo.sh k8s` so it never lands in Git.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -33,3 +33,17 @@ spec:
       token: traefik-hub-license   # Secret name; also switches the image to ghcr.io/traefik/traefik-hub
     image:
       tag: v3.21.2                 # only the tag: setting image.repository too gives ghcr.io/ghcr.io/...
+    # Step 1 - Entrypoint: "web", explicit: container port 8000, exposed as :80 by the k3d load balancer.
+    ports:
+      web:
+        port: 8000
+        exposedPort: 80
+    gateway:
+      listeners:
+        web:
+          port: 8000
+          namespacePolicy:
+            from: All
+    providers:
+      kubernetesGateway:
+        enabled: true
