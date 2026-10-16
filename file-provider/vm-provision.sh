@@ -37,16 +37,17 @@ cat > /usr/local/bin/gitops-sync <<'EOF'
 #!/bin/sh
 set -e
 REPO=/opt/gitops/repo
-DEMO=$REPO/file-provider/scenarios
+DEMO=$REPO/file-provider
+SCENARIOS=$DEMO/scenarios
 TRAEFIK_CONFIG=/etc/traefik/dynamic
 [ -d $REPO ] || git clone -q "$GITOPS_REPO" $REPO
 git -C $REPO fetch -q && git -C $REPO reset -q --hard origin/main
 
 rm -rf /tmp/enabled && mkdir -m 755 /tmp/enabled
-grep -vE '^[[:space:]]*(#|$)' $DEMO/enabled.txt | (cd $DEMO && xargs -r cp -t /tmp/enabled)
+grep -vE '^[[:space:]]*(#|$)' $SCENARIOS/enabled.txt | (cd $SCENARIOS && xargs -r cp -t /tmp/enabled)
 mkdir -p $TRAEFIK_CONFIG && rsync -a --delete --exclude=/_root.yaml /tmp/enabled/ $TRAEFIK_CONFIG/
 
-# Static config is the concatenation of the parts listed in static/enabled.txt.
+# Static config is the concatenation of the parts listed in traefik-install-conf/enabled.txt.
 # Only rewrite it when it differs, or the path unit would restart Traefik
 # on every run.
 STATIC=$DEMO/traefik-install-conf

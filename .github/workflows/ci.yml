@@ -9,6 +9,7 @@ on:
 jobs:
   demos:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       HUB_TOKEN: ${{ secrets.HUB_TOKEN }}
     steps:
@@ -34,7 +35,7 @@ jobs:
       - name: file-provider demo
         run: |
           sudo HUB_TOKEN="$HUB_TOKEN" GITOPS_REPO=http://demo:Passw0rd%21@localhost:3000/demo/gitops.git sh file-provider/vm-provision.sh
-          until curl -sf http://localhost:8000/; do sleep 2; done
+          timeout 300 sh -c 'until curl -sf http://localhost:8000/; do sleep 2; done'
 
       - name: Enable every scenario
         run: |
@@ -47,3 +48,10 @@ jobs:
 
       - name: Test file-provider
         run: hurl --test --retry 20 --retry-interval 1000 --variable base_url=http://localhost:8000 tests/*.hurl
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          sudo systemctl status traefik gitops-sync --no-pager || true
+          sudo journalctl -u traefik -u gitops-sync --no-pager -n 100 || true
+          sudo ss -ltnp || true

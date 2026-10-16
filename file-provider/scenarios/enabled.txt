@@ -1,3 +1,3 @@
-# Scenarios Traefik loads. Uncomment one, then git commit -am "..." && git push
+# Scenarios Traefik loads. Uncomment one, then ./sync-git.sh
 00-dashboard.yaml
 00-passthrough.yaml

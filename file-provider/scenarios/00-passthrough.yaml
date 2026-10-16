@@ -1,5 +1,5 @@
-# Base route: everything goes to whoami.
-#   curl http://localhost:8000/
+# Passthrough: /passthrough goes through the addForwardedHeaders middleware to whoami.
+#   curl -i http://localhost:8000/passthrough
 http:
   routers:
     whoami:

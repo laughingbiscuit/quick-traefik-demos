@@ -36,8 +36,10 @@ metadata:
 spec:
   entryPoints: [web]
   routes:
-    - match: PathPrefix(`/passthrough`) && Query(`key`, `route=ingressroute`)
+    - match: PathPrefix(`/passthrough`) && Query(`route`, `ingressroute`)
       kind: Rule
+      middlewares:
+        - name: add-forwarded-headers
       services:
         - name: whoami
           port: 80
@@ -64,6 +66,12 @@ spec:
             - type: Exact
               name: route
               value: "httproute"
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: add-forwarded-headers
       backendRefs:
         - name: whoami
           port: 80

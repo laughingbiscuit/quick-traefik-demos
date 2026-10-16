@@ -1,5 +1,5 @@
 # Static config parts Traefik starts with. Comment one out, then
-# git commit -am "..." && git push, and Traefik restarts without it.
+# ./sync-git.sh, and Traefik restarts without it.
 # Parts are concatenated, so each top-level key (entryPoints, api, ...) must live in one file only.
 00-entrypoints.yaml
 10-providers.yaml

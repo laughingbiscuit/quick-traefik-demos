@@ -1,4 +1,4 @@
-# Scenarios Flux applies. Uncomment one, then git commit -am "..." && git push
+# Scenarios Flux applies. Uncomment one, then ./sync-git.sh
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
