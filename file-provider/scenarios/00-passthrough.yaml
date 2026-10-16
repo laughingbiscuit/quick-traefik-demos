@@ -9,8 +9,7 @@ http:
     addHeaders:
       headers:
         customResponseHeaders:
-          X-Route: file
-  # Step 4 - Service
+          X-Demo-Route: file
   services:
     whoami:
       loadBalancer:

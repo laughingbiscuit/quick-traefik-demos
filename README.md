@@ -43,11 +43,11 @@ Use port `8000` for the VM. The VM's dashboard is at http://localhost:8001/dashb
 2. `tests/01-<name>.hurl`. It runs against both demos, so where they answer differently, accept either (see `X-Route` in `tests/00-passthrough.hurl`).
 3. A backend it needs (Redis, Keycloak, ...) goes in `file-provider/stack/compose.yaml` and `k8s-providers/stack/`.
 
-`stack/` and `file-provider/traefik.yaml` are the install; `scenarios/` is what you show.
+`stack/` and `file-provider/traefik-static.yaml` are the install; `scenarios/` is what you show.
 
 ## How it works
 
-- **VM:** every 10 seconds `gitops-sync` pulls Git, copies `dashboard.yaml` and the enabled scenarios into the folder Traefik watches (hot-reloaded, no restart), installs `traefik.yaml` (static: Traefik restarts only when it changes) and runs `docker compose up` for the backends. Traefik itself is a plain binary under systemd. `file-provider/vm-provision.sh` does all of it on any Linux VM: run it as root with `GITOPS_REPO` and `HUB_TOKEN`.
+- **VM:** every 10 seconds `gitops-sync` pulls Git, copies `dashboard.yaml` and the enabled scenarios into the folder Traefik watches (hot-reloaded, no restart), installs `traefik-static.yaml` (static: Traefik restarts only when it changes) and runs `docker compose up` for the backends. Traefik itself is a plain binary under systemd. `file-provider/vm-provision.sh` does all of it on any Linux VM: run it as root with `GITOPS_REPO` and `HUB_TOKEN`.
 - **Kubernetes:** Flux applies `k8s-providers/stack/` (Traefik Hub, whoami), then `k8s-providers/scenarios/`. They are separate because the scenarios need the CRDs that Traefik's install brings.
 - **CI** (`.github/workflows/ci.yml`) builds both demos, enables every scenario and runs every test, on each push. It needs the token as a repository secret `HUB_TOKEN`. The Ubuntu runner plays the VM: it runs `vm-provision.sh` directly instead of Lima.
 
