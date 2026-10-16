@@ -1,0 +1,15 @@
+# Passthrough
+
+Every request passes through 4 stages - `Entrypoint -> Router -> Middleware -> Service`.
+
+Entrypoint - listener bound to a port and a protocol (TCP, UDP, HTTP, HTTP/2, HTTP/3).
+Router - matches the request against a rule such as Host() or PathPrefix() and selects what happens next.
+Middleware - an ordered chain of optional transformations and policies.
+Service - the load-balanced pool of backend instances that receives the request, or an external endpoint.
+
+"$CONFIG"
+
+Behaviour:
+
+"$TESTS"
+

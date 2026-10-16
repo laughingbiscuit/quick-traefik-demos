@@ -1,0 +1,5 @@
+entryPoints:
+  web:
+    address: ":8000"
+  traefik:
+    address: ":8001"

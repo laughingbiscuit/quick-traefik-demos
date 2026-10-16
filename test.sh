@@ -1,6 +1,6 @@
 #!/bin/sh
 # Run tests against whichever demos are running (k8s on :8080, VM on :8000):
-#   ./test.sh tests/00-whoami.hurl tests/02-caching.hurl
+#   ./test.sh tests/00-passthrough.hurl tests/02-caching.hurl
 cd "$(dirname "$0")" || exit
 [ $# -gt 0 ] || { echo "usage: ./test.sh tests/<scenario>.hurl ..."; exit 1; }
 

@@ -25,20 +25,19 @@ jobs:
         run: ./bootstrap-git.sh
 
       - name: k8s-providers demo (k3d + Flux)
-        run: ./k8s-providers/bootstrap.sh
+        run: ./k8s-providers/k3s-bootstrap.sh
 
       # No Lima here: the runner is the VM
       - name: file-provider demo
         run: |
-          sudo HUB_TOKEN="$HUB_TOKEN" GITOPS_REPO=http://demo:Passw0rd%21@localhost:3000/demo/gitops.git sh file-provider/provision.sh
+          sudo HUB_TOKEN="$HUB_TOKEN" GITOPS_REPO=http://demo:Passw0rd%21@localhost:3000/demo/gitops.git sh file-provider/vm-provision.sh
           until curl -sf http://localhost:8000/; do sleep 2; done
 
       - name: Enable every scenario
-        working-directory: gitops-demo-repo
         run: |
-          sed -i 's/^# \([0-9]\)/\1/' file-provider/enabled.txt
-          sed -i 's/^# - /  - /' k8s-providers/kustomization.yaml
-          git commit -am "Enable every scenario" && git push
+          sed -i 's/^# \([0-9]\)/\1/' file-provider/scenarios/enabled.txt
+          sed -i 's/^# - /  - /' k8s-providers/scenarios/kustomization.yaml
+          ./sync-git.sh
 
       - name: Test k8s-providers
         run: hurl --test --retry 20 --retry-interval 1000 --variable base_url=http://localhost:8080 tests/*.hurl

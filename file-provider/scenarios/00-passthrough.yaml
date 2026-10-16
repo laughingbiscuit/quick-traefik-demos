@@ -3,17 +3,18 @@
 http:
   routers:
     whoami:
-      rule: PathPrefix(`/`)
+      rule: PathPrefix(`/passthrough`)
       entryPoints: [web]
       middlewares: [addForwardedHeaders]
       service: whoami
-  services:
-    whoami:
-      loadBalancer:
-        servers:
-          - url: http://whoami:80
   middlewares:
     addForwardedHeaders:
       headers: 
         customResponseHeaders:
           X-Demo: "true"
+  services:
+    whoami:
+      loadBalancer:
+        servers:
+          - url: http://localhost:9000
+ 
