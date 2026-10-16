@@ -12,7 +12,10 @@ jobs:
     env:
       HUB_TOKEN: ${{ secrets.HUB_TOKEN }}
     steps:
+      # Full history: sync-git.sh pushes a commit on top of HEAD, and Gitea rejects shallow pushes
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Install k3d, flux and hurl
         run: |
