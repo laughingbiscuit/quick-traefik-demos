@@ -11,10 +11,10 @@ spec:
   rules:
     - http:
         paths:
-          - path: /passthrough   # an Ingress can't match on the query string
+          - path: /passthrough
             pathType: Prefix
             backend:
-              service:           # Step 4 - Service: the whoami Service (../stack/01-whoami.yaml)
+              service:
                 name: whoami
                 port:
                   number: 80
@@ -27,4 +27,4 @@ metadata:
 spec:
   headers:
     customResponseHeaders:
-      X-Route: ingress
+      X-Demo-Route: ingress

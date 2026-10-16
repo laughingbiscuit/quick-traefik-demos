@@ -35,4 +35,4 @@ metadata:
 spec:
   headers:
     customResponseHeaders:
-      X-Route: httproute
+      X-Demo-Route: httproute
