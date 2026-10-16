@@ -1,3 +1,2 @@
-# Scenarios Traefik loads. Uncomment one, then ./sync-git.sh
-00-dashboard.yaml
+# Scenarios Traefik loads. Uncomment one, then ./demo.sh sync
 00-passthrough.yaml

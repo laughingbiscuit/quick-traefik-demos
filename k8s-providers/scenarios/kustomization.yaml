@@ -1,6 +1,7 @@
-# Scenarios Flux applies. Uncomment one, then ./sync-git.sh
+# Scenarios Flux applies. Uncomment one, then ./demo.sh sync
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - 00-passthrough.yaml
-
+  - 00-passthrough-ingress.yaml
+  - 00-passthrough-ingressroute.yaml
+  - 00-passthrough-httproute.yaml

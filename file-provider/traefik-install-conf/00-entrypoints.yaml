@@ -1,6 +1,0 @@
-# Step 1 - Entrypoint: "web" takes the demo traffic, "traefik" serves the dashboard.
-entryPoints:
-  web:
-    address: ":8000"
-  traefik:
-    address: ":8001"
