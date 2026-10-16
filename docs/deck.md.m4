@@ -24,6 +24,7 @@ TL;DR:
 - VM with Lima
 - GitOps with Gitea + Flux
 - Testing with curl, hurl and hey
+- Redis, Keycloak, OPA and Toxiproxy also available 
 
 You can verify the test results and try yourself with this [repo](https://github.com/laughingbiscuit/quick-traefik-demos)
 
