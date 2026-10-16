@@ -78,12 +78,15 @@ cat > /etc/systemd/system/traefik.service <<'EOF'
 [Unit]
 Description=Traefik Hub
 After=network-online.target
+# Keep retrying: a failed Hub licence check must not stop Traefik for good
+StartLimitIntervalSec=0
 
 [Service]
 User=traefik
 EnvironmentFile=/etc/traefik/traefik.env
 ExecStart=/usr/local/bin/traefik-hub --configFile=/etc/traefik/traefik.yaml
 Restart=on-failure
+RestartSec=2
 
 [Install]
 WantedBy=multi-user.target
