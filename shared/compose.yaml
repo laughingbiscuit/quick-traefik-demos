@@ -1,9 +1,22 @@
-# Shared services for both demos. They run in Docker on the host, next to Gitea, outside the VM
+# Shared services for both demos, Gitea included. They run in Docker on the host, outside the VM
 # and the cluster: the VM reaches them at host.lima.internal:<port>, k8s at host.k3d.internal:<port>.
 # Lab only: published on every interface, with throwaway credentials.
 name: shared
 
 services:
+  gitea:   # the Git server both demos pull from: `./demo.sh git` creates its user and repo
+    image: gitea/gitea:1.24
+    environment:
+      GITEA__security__INSTALL_LOCK: "true"
+    ports:
+      - "3000:3000"
+    volumes:
+      - gitea:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/healthz"]
+      interval: 2s
+    restart: unless-stopped
+
   lgtm:   # Grafana + Loki + Tempo + Prometheus/Mimir behind one OTLP endpoint
     image: grafana/otel-lgtm:0.37.0
     environment:
@@ -42,33 +55,31 @@ services:
       - ./keycloak/demo-realm.json:/opt/keycloak/data/import/demo-realm.json:ro
     restart: unless-stopped
 
-  vault:   # dev mode: in memory, unsealed, root token "root". TLS because ACME clients refuse plain HTTP
-    image: hashicorp/vault:2.2
-    command: >
-      server -dev -dev-root-token-id=root -dev-listen-address=0.0.0.0:8200
-      -dev-tls -dev-tls-cert-dir=/vault/file
-      -dev-tls-san=vault -dev-tls-san=host.docker.internal -dev-tls-san=host.lima.internal -dev-tls-san=host.k3d.internal
+  step-ca:   # PKI and ACME: root and intermediate CA are created on first start, in the volume
+    image: smallstep/step-ca:0.30.2
+    environment:
+      DOCKER_STEPCA_INIT_NAME: Demo
+      DOCKER_STEPCA_INIT_DNS_NAMES: localhost,step-ca,host.docker.internal,host.lima.internal,host.k3d.internal
+      DOCKER_STEPCA_INIT_ACME: "true"   # ACME directory: https://<host>:9000/acme/acme/directory
+      DOCKER_STEPCA_INIT_PASSWORD: Passw0rd!
+    extra_hosts:
+      # http-01 and tls-alpn-01 are validated on the host's :80 and :443, which the k8s gateway owns
+      - "whoami.acme.test:host-gateway"
     ports:
-      - "8200:8200"
+      - "9000:9000"
     volumes:
-      - vault-tls:/vault/file   # the generated CA lands here as vault-ca.pem
-    healthcheck:
-      test: ["CMD", "vault", "status", "-address=https://127.0.0.1:8200", "-tls-skip-verify"]
-      interval: 2s
+      - step:/home/step
     restart: unless-stopped
 
-  vault-init:   # one-shot: PKI root CA, ACME and a demo secret, see vault/init.sh
+  vault:   # secrets only. Dev mode: in memory, unsealed, root token "root"
     image: hashicorp/vault:2.2
-    entrypoint: ["sh", "/init.sh"]
-    environment:
-      VAULT_ADDR: https://vault:8200
-      VAULT_CACERT: /vault/file/vault-ca.pem
-      VAULT_TOKEN: root
-    volumes:
-      - ./vault/init.sh:/init.sh:ro
-      - vault-tls:/vault/file:ro
-    depends_on:
-      vault: {condition: service_healthy}
+    command: server -dev -dev-root-token-id=root -dev-listen-address=0.0.0.0:8200
+    ports:
+      - "8200:8200"
+    healthcheck:
+      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
+      interval: 2s
+    restart: unless-stopped
 
   ollama:
     image: ollama/ollama:0.40.5
@@ -105,9 +116,7 @@ services:
     image: docker.gitea.com/gitea-mcp-server:1.9.0
     command: ["/app/gitea-mcp", "-t", "http", "--port", "8080"]
     environment:
-      GITEA_HOST: http://host.docker.internal:3000
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      GITEA_HOST: http://gitea:3000
     ports:
       - "8081:8080"   # MCP endpoint: POST /mcp
     restart: unless-stopped
@@ -141,5 +150,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  gitea:
+  step:
   ollama:
-  vault-tls:

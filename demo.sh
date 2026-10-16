@@ -1,6 +1,6 @@
 #!/bin/sh
 # One entry point for both demos:
-#   ./demo.sh up      Gitea, the shared services, then the k8s demo (:8080, TLS :8443) and the VM demo (:8000, TLS :8444, dashboard :8001)
+#   ./demo.sh up      Gitea and the shared services, then the k8s demo (:8080, TLS :8443) and the VM demo (:8000, TLS :8444, dashboard :8001)
 #   ./demo.sh sync    push this working tree to Gitea: both demos pick it up within ~20s
 #   ./demo.sh test    run tests/*.hurl (or the files you name) against both demos, plus the shared services' smoke tests
 #   ./demo.sh smoke   just the smoke tests of the shared services
@@ -16,21 +16,23 @@ GITEA=http://demo:Passw0rd%21@localhost:3000/demo/gitops.git
 
 wait_for() {   # <seconds> <url> <hint>: poll until the URL answers, or give up
   i=0
-  until curl -sf -o /dev/null "$2"; do
+  until curl -skf -o /dev/null "$2"; do
     i=$((i+2)); [ $i -lt "$1" ] || { echo "No answer from $2 after $1s: $3"; exit 1; }
     sleep 2
   done
 }
 
-issue_cert() {   # a *.test certificate signed by Vault's root CA for both websecure entrypoints, kept in certs/
+issue_cert() {   # a *.test certificate from step-ca for both websecure entrypoints, kept in certs/ (valid 24h)
   # curl refuses a wildcard with one dot, so *.demo.test is in there too: whoami.demo.test works everywhere
   mkdir -p certs
-  vault="docker exec -i -e VAULT_ADDR=https://127.0.0.1:8200 -e VAULT_CACERT=/vault/file/vault-ca.pem -e VAULT_TOKEN=root $($SHARED ps -q vault) vault"
-  openssl ecparam -genkey -name prime256v1 -noout -out certs/tls.key
-  openssl req -new -key certs/tls.key -subj '/CN=*.test' \
-    | $vault write -field=certificate pki/sign/wildcard csr=- common_name='*.test' alt_names='demo.test,*.demo.test' ttl=720h > certs/tls.crt
-  $vault read -field=certificate pki/cert/ca > certs/ca.pem
-  openssl verify -CAfile certs/ca.pem certs/tls.crt >/dev/null
+  ca="$SHARED exec -T step-ca"
+  $ca step ca certificate '*.test' /tmp/tls.crt /tmp/tls.key --san demo.test --san '*.demo.test' \
+    --provisioner admin --provisioner-password-file /home/step/secrets/password --force > /dev/null
+  $ca cat /tmp/tls.crt > certs/tls.crt
+  $ca cat /tmp/tls.key > certs/tls.key
+  $ca cat /home/step/certs/root_ca.crt > certs/ca.pem
+  chmod 600 certs/tls.key
+  openssl verify -CAfile certs/ca.pem -untrusted certs/tls.crt certs/tls.crt > /dev/null
 }
 
 need_cert() { [ -f certs/tls.crt ] || { echo "No certs/tls.crt: run ./demo.sh shared first"; exit 1; }; }
@@ -39,9 +41,8 @@ need_token() { : "${HUB_TOKEN:?set HUB_TOKEN in .env (copy .env.example)}"; }
 
 git_up() {   # Gitea on :3000, with this repo pushed to it as the `gitea` remote
   set -x
-  docker run -d --name gitea -p 3000:3000 -e GITEA__security__INSTALL_LOCK=true gitea/gitea:1.24
-  wait_for 120 http://localhost:3000/api/healthz "docker logs gitea"
-  docker exec -u git gitea gitea admin user create --admin --username demo --password 'Passw0rd!' \
+  $SHARED up -d --wait --quiet-pull gitea
+  $SHARED exec -T -u git gitea gitea admin user create --admin --username demo --password 'Passw0rd!' \
     --email demo@example.com --must-change-password=false
   curl -fsu demo:'Passw0rd!' -o /dev/null -H 'Content-Type: application/json' \
     -d '{"name":"gitops","default_branch":"main"}' http://localhost:3000/api/v1/user/repos
@@ -59,23 +60,25 @@ sync() {   # push the working tree as it is (committed or not) to Gitea's main, 
   git push --force -q gitea "$commit:refs/heads/main"
 }
 
-shared_up() {   # Grafana LGTM, Redis, Keycloak, Vault, Ollama, Toxiproxy, Gitea MCP, and the demo API and traffic
+shared_up() {   # everything in shared/compose.yaml: Gitea is already up from `git`, the rest starts here
   set -x
   $SHARED up -d --quiet-pull
-  [ "$(docker wait $($SHARED ps -aq vault-init))" = 0 ]   # the one-shot that configures Vault
   [ "$(docker wait $($SHARED ps -aq ollama-pull))" = 0 ]   # the model download
   set +x
   wait_for 120 http://localhost:3001/api/health "$SHARED logs lgtm"
   wait_for 120 http://localhost:8180/realms/demo "$SHARED logs keycloak"
+  wait_for 120 https://localhost:9000/health "$SHARED logs step-ca"
   issue_cert
-  echo "Grafana http://localhost:3001  Keycloak http://localhost:8180 (admin / Passw0rd!)  Vault http://localhost:8200 (token: root)"
+  echo "Grafana http://localhost:3001  Keycloak http://localhost:8180 (admin / Passw0rd!)  Vault http://localhost:8200 (token: root)  step-ca https://localhost:9000"
 }
 
 k8s_up() {   # k3d cluster, Flux, and Traefik Hub installed by Flux from k8s-providers/stack
   need_token; need_cert
   set -x
   repo=http://host.k3d.internal:3000/demo/gitops.git
-  k3d cluster create k8s-demo --wait -p "8080:80@loadbalancer" -p "8443:443@loadbalancer" --k3s-arg "--disable=traefik@server:0"
+  # :8080 and :8443 are yours; the cluster owns the host's :80 and :443 too, because ACME validation only connects there
+  k3d cluster create k8s-demo --wait -p "8080:80@loadbalancer" -p "8443:443@loadbalancer" \
+    -p "80:80@loadbalancer" -p "443:443@loadbalancer" --k3s-arg "--disable=traefik@server:0"
   KUBECONFIG=$(k3d kubeconfig write k8s-demo) && export KUBECONFIG   # immune to other tools switching context
   flux install
   kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
@@ -85,6 +88,7 @@ k8s_up() {   # k3d cluster, Flux, and Traefik Hub installed by Flux from k8s-pro
   kubectl -n traefik create secret generic traefik-hub-license --from-literal=token="$HUB_TOKEN"
   set -x
   kubectl -n traefik create secret tls wildcard-test --cert=certs/tls.crt --key=certs/tls.key
+  kubectl -n traefik create secret generic step-ca-root --from-file=ca.pem=certs/ca.pem   # for ACME against step-ca
   flux create source git gitops --url=$repo --branch=main --secret-ref=gitea-auth --interval=10s
   # Two Kustomizations: the scenarios use Traefik's CRDs, which only exist once the stack is installed
   flux create kustomization stack --source=GitRepository/gitops --path=./k8s-providers/stack --prune=true --interval=10s --wait
@@ -120,7 +124,6 @@ smoke() {   # an up check for every shared service (the traffic generator needs 
 }
 
 test_all() {   # hurl retries for up to 20s, so this can run straight after `sync`
-  [ $# -gt 0 ] || set -- tests/*.hurl
   status=0
   smoke || status=1
   echo "== shared/opa"
@@ -128,9 +131,12 @@ test_all() {   # hurl retries for up to 20s, so this can run straight after `syn
   need_cert
   for target in k8s-providers=8080:8443 file-provider=8000:8444; do
     ports=${target#*=}
+    if [ $# -gt 0 ]; then files="$*"   # tests named *.k8s.hurl are for Kubernetes only
+    elif [ "${target%=*}" = k8s-providers ]; then files=$(ls tests/*.hurl)
+    else files=$(ls tests/*.hurl | grep -v '\.k8s\.hurl$'); fi
     echo "== ${target%=*} (localhost:${ports%:*}, TLS on ${ports#*:})"
     hurl --test --retry 20 --retry-interval 1000 --cacert certs/ca.pem \
-      --variable base_url="http://localhost:${ports%:*}" --variable tls_port="${ports#*:}" "$@" || status=1
+      --variable base_url="http://localhost:${ports%:*}" --variable tls_port="${ports#*:}" $files || status=1
   done
   return $status
 }
@@ -139,7 +145,6 @@ clean() {
   k3d cluster delete k8s-demo || true
   limactl delete -f fp-demo || true
   $SHARED down -v || true
-  docker rm -fv gitea || true
   git remote remove gitea 2>/dev/null || true
 }
 

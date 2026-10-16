@@ -1,4 +1,4 @@
-# Default certificate for the websecure entrypoint: a *.test wildcard from Vault's root CA.
+# Default certificate for the websecure entrypoint: a *.test wildcard from step-ca.
 # vm-provision.sh puts the files there; they never go through Git. Dynamic, like the dashboard.
 tls:
   stores:

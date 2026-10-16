@@ -1,22 +1,11 @@
-# Vault is unsealed, PKI has its root CA, ACME is on, and the demo secret is there
-GET https://localhost:8200/v1/secret/data/demo
+# Vault is unsealed and its secrets engine stores and returns a secret
+POST http://localhost:8200/v1/secret/data/smoke
+X-Vault-Token: root
+{"data": {"ok": "yes"}}
+HTTP 200
+
+GET http://localhost:8200/v1/secret/data/smoke
 X-Vault-Token: root
 HTTP 200
 [Asserts]
-jsonpath "$.data.data.greeting" == "hello"
-
-GET https://localhost:8200/v1/pki/ca/pem
-HTTP 200
-[Asserts]
-body contains "BEGIN CERTIFICATE"
-
-GET https://localhost:8200/v1/pki/config/acme
-X-Vault-Token: root
-HTTP 200
-[Asserts]
-jsonpath "$.data.enabled" == true
-
-GET https://localhost:8200/v1/pki/acme/directory
-HTTP 200
-[Asserts]
-jsonpath "$.newOrder" exists
+jsonpath "$.data.data.ok" == "yes"

@@ -44,6 +44,25 @@ spec:
       default:
         defaultCertificate:
           secretName: wildcard-test
+    # ACME from step-ca: Traefik gets its own certificates and renews them, see 00-security-acme.yaml.
+    # step-ca validates on this cluster's :80 (the web entrypoint). Its root CA is the Secret
+    # step-ca-root, created by `./demo.sh k8s`. Certificates last 24h, so Traefik renews them in
+    # their last 6 hours, checking every 10 minutes. Without persistence the account and
+    # certificates live in the pod's volume: a new pod simply asks again.
+    certificatesResolvers:
+      step:
+        acme:
+          email: demo@example.com
+          caServer: https://host.k3d.internal:9000/acme/acme/directory
+          caCertificates: [/step-ca/ca.pem]
+          certificatesDuration: 24
+          storage: /data/acme.json
+          httpChallenge:
+            entryPoint: web
+    volumes:
+      - name: step-ca-root
+        mountPath: /step-ca
+        type: secret
     gateway:
       listeners:
         web:
