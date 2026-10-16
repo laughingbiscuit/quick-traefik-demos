@@ -53,5 +53,7 @@ jobs:
         if: failure()
         run: |
           sudo systemctl status traefik gitops-sync --no-pager || true
-          sudo journalctl -u traefik -u gitops-sync --no-pager -n 100 || true
+          sudo journalctl -u traefik --no-pager -n 60 || true
+          sudo journalctl -u gitops-sync --no-pager -n 20 || true
+          sudo cat /etc/traefik/traefik.yaml || true
           sudo ss -ltnp || true
