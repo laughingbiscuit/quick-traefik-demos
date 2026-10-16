@@ -1,0 +1,155 @@
+# Shared services for both demos, Gitea included. They run in Docker on the host, outside the VM
+# and the cluster: the VM reaches them at host.lima.internal:<port>, k8s at host.k3d.internal:<port>.
+# Lab only: published on every interface, with throwaway credentials.
+name: shared
+
+services:
+  gitea:   # the Git server both demos pull from: `./demo.sh git` creates its user and repo
+    image: gitea/gitea:1.24
+    environment:
+      GITEA__security__INSTALL_LOCK: "true"
+    ports:
+      - "3000:3000"
+    volumes:
+      - gitea:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/healthz"]
+      interval: 2s
+    restart: unless-stopped
+
+  lgtm:   # Grafana + Loki + Tempo + Prometheus/Mimir behind one OTLP endpoint
+    image: grafana/otel-lgtm:0.37.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    ports:
+      - "3001:3000"   # Grafana (Gitea has 3000)
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    restart: unless-stopped
+
+  redis:
+    image: redis:8.8-alpine
+    command: redis-server --protected-mode no --save ""   # no password, nothing kept on disk
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+    restart: unless-stopped
+
+  keycloak:   # realm "demo" is imported on start: see keycloak/demo-realm.json
+    image: quay.io/keycloak/keycloak:26.8.1
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: demo
+      KC_BOOTSTRAP_ADMIN_PASSWORD: Password123
+      # Browsers see http://localhost:8180; the VM and the cluster reach it through the host and get
+      # the same issuer in tokens, while their own back-channel calls use whatever host they dialled.
+      KC_HOSTNAME: http://localhost:8180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./keycloak/demo-realm.json:/opt/keycloak/data/import/demo-realm.json:ro
+    restart: unless-stopped
+
+  step-ca:   # PKI and ACME: root and intermediate CA are created on first start, in the volume
+    image: smallstep/step-ca:0.30.2
+    environment:
+      DOCKER_STEPCA_INIT_NAME: Demo
+      DOCKER_STEPCA_INIT_DNS_NAMES: localhost,step-ca,host.docker.internal,host.lima.internal,host.k3d.internal
+      DOCKER_STEPCA_INIT_ACME: "true"   # ACME directory: https://<host>:9000/acme/acme/directory
+      DOCKER_STEPCA_INIT_PASSWORD: Password123
+    extra_hosts:
+      # http-01 and tls-alpn-01 are validated on the host's :80 and :443, which the k8s gateway owns
+      - "whoami.acme.test:host-gateway"
+    ports:
+      - "9000:9000"
+    volumes:
+      - step:/home/step
+    restart: unless-stopped
+
+  vault:   # secrets only. Dev mode: in memory, unsealed, root token "Password123"
+    image: hashicorp/vault:2.2
+    command: server -dev -dev-root-token-id=Password123 -dev-listen-address=0.0.0.0:8200
+    ports:
+      - "8200:8200"
+    healthcheck:
+      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
+      interval: 2s
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:0.40.5
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 2s
+    restart: unless-stopped
+
+  ollama-pull:   # one-shot: downloads the model (set OLLAMA_MODEL to change it)
+    image: ollama/ollama:0.40.5
+    command: ["pull", "${OLLAMA_MODEL:-qwen2.5:0.5b}"]
+    environment:
+      OLLAMA_HOST: ollama:11434
+    depends_on:
+      ollama: {condition: service_healthy}
+
+  toxiproxy:   # proxies are listed in toxiproxy/toxiproxy.json; add toxics through the API on :8474
+    image: ghcr.io/shopify/toxiproxy:2.13.0
+    command: ["-host=0.0.0.0", "-config=/toxiproxy.json"]
+    volumes:
+      - ./toxiproxy/toxiproxy.json:/toxiproxy.json:ro
+    ports:
+      - "8474:8474"   # API
+      - "6380:6380"   # -> redis
+      - "9111:9111"   # -> api-v1
+      - "9112:9112"   # -> api-v2
+    restart: unless-stopped
+
+  gitea-mcp:   # no token here: each client sends its own, as "Authorization: Bearer <Gitea token>"
+    image: docker.gitea.com/gitea-mcp-server:1.9.0
+    command: ["/app/gitea-mcp", "-t", "http", "--port", "8080"]
+    environment:
+      GITEA_HOST: http://gitea:3000
+    ports:
+      - "8081:8080"   # MCP endpoint: POST /mcp
+    restart: unless-stopped
+
+  api-v1:   # same image, named per version: swap `image:` for real v1/v2 builds
+    image: traefik/whoami:v1.10
+    environment:
+      WHOAMI_NAME: api-v1
+    ports:
+      - "9101:80"
+    restart: unless-stopped
+
+  api-v2:
+    image: traefik/whoami:v1.10
+    environment:
+      WHOAMI_NAME: api-v2
+    ports:
+      - "9102:80"
+    restart: unless-stopped
+
+  traffic:   # sends requests to both gateways, see traffic/traffic.sh for the knobs
+    image: curlimages/curl:8.23.0
+    entrypoint: ["sh", "/traffic.sh"]
+    environment:
+      K8S_WEIGHT: ${K8S_WEIGHT:-50}
+      URL_PATH: ${URL_PATH:-/passthrough}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./traffic/traffic.sh:/traffic.sh:ro
+    restart: unless-stopped
+
+volumes:
+  gitea:
+  step:
+  ollama:

@@ -1,0 +1,5 @@
+[
+  {"name": "redis",  "listen": "[::]:6380", "upstream": "redis:6379", "enabled": true},
+  {"name": "api-v1", "listen": "[::]:9111", "upstream": "api-v1:80",  "enabled": true},
+  {"name": "api-v2", "listen": "[::]:9112", "upstream": "api-v2:80",  "enabled": true}
+]

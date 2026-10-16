@@ -28,13 +28,16 @@ jobs:
       - name: Gitea
         run: ./demo.sh git
 
+      - name: Shared services
+        run: ./demo.sh shared
+
       - name: k8s-providers demo (k3d + Flux)
         run: ./demo.sh k8s
 
       # No Lima here: the runner is the VM
       - name: file-provider demo
         run: |
-          sudo HUB_TOKEN="$HUB_TOKEN" GITOPS_REPO=http://demo:Passw0rd%21@localhost:3000/demo/gitops.git sh file-provider/vm-provision.sh
+          sudo HUB_TOKEN="$HUB_TOKEN" TLS_CERT="$(base64 -w0 certs/tls.crt)" TLS_KEY="$(base64 -w0 certs/tls.key)" GITOPS_REPO=http://demo:Password123@localhost:3000/demo/gitops.git sh file-provider/vm-provision.sh
           timeout 300 sh -c 'until curl -sf http://localhost:8001/ping; do sleep 2; done'
 
       - name: Enable every scenario
@@ -54,6 +57,7 @@ jobs:
           sudo journalctl -u gitops-sync --no-pager -n 20 || true
           sudo cat /etc/traefik/traefik-static.yaml || true
           sudo ss -ltnp || true
+          docker compose -p shared -f shared/compose.yaml logs --tail 30 || true
           export KUBECONFIG=$(k3d kubeconfig write k8s-demo 2>/dev/null) || true
           flux get all -A || true
           kubectl get pods -A || true

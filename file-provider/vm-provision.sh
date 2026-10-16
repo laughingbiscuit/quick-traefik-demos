@@ -1,23 +1,47 @@
 #!/bin/sh
-# Turns any Linux VM into the file-provider demo. Needs GITOPS_REPO and HUB_TOKEN.
+# Turns any Linux VM into the file-provider demo, with no Docker: Traefik Hub and whoami are plain
+# binaries from GitHub under systemd. Needs GITOPS_REPO, HUB_TOKEN and the websecure certificate as
+# TLS_CERT and TLS_KEY (both base64, see issue_cert in demo.sh).
 set -e
-: "${GITOPS_REPO:?}" "${HUB_TOKEN:?}"
+: "${GITOPS_REPO:?}" "${HUB_TOKEN:?}" "${TLS_CERT:?}" "${TLS_KEY:?}"
 set -x
 
-TRAEFIK_IMAGE=ghcr.io/traefik/traefik-hub:v3.21.2
+HUB_VERSION=v3.21.2       # github.com/traefik/hub/releases
+WHOAMI_VERSION=v1.11.0    # github.com/traefik/whoami/releases (v1.12.0 has no binaries)
 
-# Docker runs the dependencies (compose) and is where the Traefik binary comes from.
-command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh
+case $(uname -m) in
+  x86_64) arch=amd64 ;;
+  aarch64) arch=arm64 ;;
+  *) echo "unsupported CPU: $(uname -m)"; exit 1 ;;
+esac
 
-# Traefik runs as a plain binary under systemd, copied out of the release image.
+# Download both release tarballs, check their checksums, install the binaries.
+dl=$(mktemp -d)
+cd "$dl"
+hub=traefik-hub_${HUB_VERSION}_linux_${arch}
+curl -fsSL -O https://github.com/traefik/hub/releases/download/$HUB_VERSION/$hub.tar.gz \
+  -O https://github.com/traefik/hub/releases/download/$HUB_VERSION/$hub.tar.gz.sha256.txt
+echo "$(cat $hub.tar.gz.sha256.txt)  $hub.tar.gz" | sha256sum -c -
+tar xzf $hub.tar.gz
+install -m 755 traefik-hub-linux-$arch /usr/local/bin/traefik-hub
+whoami=whoami_${WHOAMI_VERSION}_linux_${arch}
+curl -fsSL -O https://github.com/traefik/whoami/releases/download/$WHOAMI_VERSION/$whoami.tar.gz \
+  -O https://github.com/traefik/whoami/releases/download/$WHOAMI_VERSION/whoami_${WHOAMI_VERSION#v}_checksums.txt
+grep " $whoami.tar.gz\$" whoami_${WHOAMI_VERSION#v}_checksums.txt | sha256sum -c -
+tar xzf $whoami.tar.gz whoami
+install -m 755 whoami /usr/local/bin/whoami
+cd /; rm -rf "$dl"
+
 id traefik >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin traefik
-cid=$(docker create "$TRAEFIK_IMAGE")
-docker cp "$cid":/traefik-hub /usr/local/bin/traefik-hub
-docker rm "$cid" >/dev/null
 mkdir -p /etc/traefik/dynamic
 set +x   # keep the token off screen
 echo "TRAEFIK_HUB_TOKEN=$HUB_TOKEN" > /etc/traefik/traefik.env
 chmod 600 /etc/traefik/traefik.env
+mkdir -p /etc/traefik/certs
+echo "$TLS_CERT" | base64 -d > /etc/traefik/certs/tls.crt
+echo "$TLS_KEY" | base64 -d > /etc/traefik/certs/tls.key
+chown root:traefik /etc/traefik/certs/tls.key
+chmod 640 /etc/traefik/certs/tls.key
 set -x
 
 mkdir -p /etc/gitops
@@ -36,16 +60,14 @@ TRAEFIK_CONFIG=/etc/traefik/dynamic
 [ -d $REPO ] || git clone -q "$GITOPS_REPO" $REPO
 git -C $REPO fetch -q && git -C $REPO reset -q --hard origin/main
 
-# Dynamic config: the dashboard plus the scenarios listed in enabled.txt. Traefik hot-reloads it.
+# Dynamic config: the dashboard, the certificate and the scenarios listed in enabled.txt. Traefik hot-reloads it.
 rm -rf /tmp/enabled && mkdir -m 755 /tmp/enabled
-cp $DEMO/dashboard.yaml /tmp/enabled/
+cp $DEMO/dashboard.yaml $DEMO/tls.yaml /tmp/enabled/
 grep -vE '^[[:space:]]*(#|$)' $SCENARIOS/enabled.txt | (cd $SCENARIOS && xargs -r cp -t /tmp/enabled)
 mkdir -p $TRAEFIK_CONFIG && rsync -a --delete /tmp/enabled/ $TRAEFIK_CONFIG/
 
 # Static config: only rewrite it when it differs, or the path unit would restart Traefik on every run.
-cmp -s $DEMO/traefik-static.yaml /etc/traefik/traefik.yaml || install -m 644 $DEMO/traefik-static.yaml /etc/traefik/traefik.yaml
-
-docker compose -p gitops -f $DEMO/stack/compose.yaml up -d --remove-orphans --quiet-pull
+cmp -s $DEMO/traefik-static.yaml /etc/traefik/traefik-static.yaml || install -m 644 $DEMO/traefik-static.yaml /etc/traefik/traefik-static.yaml
 EOF
 chmod 755 /usr/local/bin/gitops-sync
 
@@ -83,6 +105,20 @@ RestartSec=2
 WantedBy=multi-user.target
 EOF
 
+# The scenarios' backend. Port 9500: Lima forwards every guest port to the host, so it must not clash with a shared service.
+cat > /etc/systemd/system/whoami.service <<'EOF'
+[Unit]
+Description=whoami, the backend of the VM scenarios
+
+[Service]
+DynamicUser=yes
+ExecStart=/usr/local/bin/whoami --port 9500 --name vm-whoami
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 # Restart Traefik when its static config changes (dynamic files hot-reload).
 cat > /etc/systemd/system/traefik-restart.path <<'EOF'
 [Path]
@@ -100,4 +136,4 @@ EOF
 
 systemctl daemon-reload
 systemctl start gitops-sync
-systemctl enable --now traefik.service traefik-restart.path gitops-sync.timer
+systemctl enable --now whoami.service traefik.service traefik-restart.path gitops-sync.timer

@@ -5,5 +5,5 @@ HTTP 401
 
 GET {{base_url}}/basic-auth
 [BasicAuth]
-user: pass
+demo: Password123
 HTTP 200
