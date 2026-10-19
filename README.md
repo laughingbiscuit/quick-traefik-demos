@@ -47,7 +47,7 @@ The dashboard is **http://localhost:8082/dashboard/** (keep the trailing slash).
 | 1 `01-passthrough` | `curl -si localhost:8080/passthrough`, then add `?route=ingressroute`, `?route=httproute` or `?route=file` | whoami's answer and an `X-Demo-Route` header naming the route that answered: `ingress`, `ingressroute`, `httproute` or `file`. They are four providers in one Traefik (`@kubernetes`, `@kubernetescrd`, `@kubernetesgateway`, `@file`), merged in one dashboard, k3d's. The VM answers `?route=file` on port `8000`, from a hand-written file |
 | 2 `02-proxy` (k3d only) | `curl --cacert certs/ca.pem https://api.traefik-hub.test/` | whoami over HTTPS, with a certificate that Traefik got from step-ca for exactly `api.traefik-hub.test`: see it with `openssl s_client -connect localhost:443 -servername api.traefik-hub.test`. Plain `http://api.traefik-hub.test/` on `:80` gets a 301 to HTTPS, as on a real site. More below |
 | 3 `03-api-gateway` | `curl -i localhost:8080/basic-auth`, then `-u demo:Password123` | `401` without the login, whoami with it |
-| 4 `04-api-management` | | a placeholder: API management is k3d only (Traefik Hub's API objects) |
+| 4 `04-token-exchange` (k3d only) | `TOKEN=$(curl -s -d grant_type=password -d client_id=demo-app -d username=demo -d password=Password123 localhost:8180/realms/demo/protocol/openid-connect/token \| jq -r .access_token)`, then `curl -s -H "Authorization: Bearer $TOKEN" localhost:8080/token-exchange` | whoami's answer, with an `Authorization` header that is **not** your token: Traefik traded it at Keycloak (RFC 8693) for one made for the backend (`aud: demo-backend`, `azp: gateway`, same user, no email or roles). Without a token, or with one Keycloak won't exchange, you get a 401. It uses Traefik Hub's `oAuthTokenExchange` middleware, which is early access |
 
 **One Traefik, many providers.** Each provider watches its own source and translates it into Traefik's dynamic configuration; they run at the same time, and every object carries its provider's name (`whoami@file`, `whoami@kubernetescrd`), so nothing collides. The k3d Traefik runs four providers at once (Ingress, IngressRoute, Gateway API and the file provider, switched on in `platform/k8s/00-traefik-hub.yaml`), so its dashboard is the merged view. The VM is another Traefik with one provider (file), and no dashboard: a Traefik's dashboard shows that one instance, not several.
 
@@ -69,7 +69,7 @@ chapters/07-rate-limit/
   slides.md             this chapter's slides, for the deck (see below)
 ```
 
-1. A chapter with no `kustomization.yaml` has no Kubernetes objects and is skipped by `chapter` (chapter 4 today).
+1. A chapter with no `kustomization.yaml` has no Kubernetes objects and is skipped by `chapter`.
 2. Chapters run together, so give your routes their own path prefix or host: two with the same rule collide.
 3. A backend it needs (Redis, Keycloak, ...) goes in `shared/compose.yaml`: both reach it through the host. A backend of its own goes in the chapter's manifests, or in `platform/` if several chapters share it. On the VM it is a systemd unit in `platform/vm/vm-provision.sh` (see `whoami`).
 4. Hand-written VM config, if the chapter has any, goes in `chapters/NN-<name>/vm/` (the only subdirectory, so Flux never reads it) with a `*.vm.hurl` test that it passes.
@@ -83,7 +83,7 @@ Docker Compose runs Gitea and the dependencies the chapters share, on the host (
 |---|---|---|---|
 | Grafana LGTM | `3001` (Grafana), `4317`/`4318` (OTLP) | metrics, logs and traces in one place | none |
 | Redis | `6379` | distributed rate limiting, shared state | none |
-| Keycloak | `8180` | OIDC. Realm `demo`, client `traefik` (secret `Password123`), users `demo` (role `admin`) and `guest` (no role) | `demo` / `Password123`, for the realm and the console |
+| Keycloak | `8180` | OIDC. Realm `demo`, users `demo` (role `admin`) and `guest` (no role). Clients: `traefik` (secret `Password123`); for token exchange, `demo-app` (public, signs users in with a password grant), `gateway` (secret `Password123`, token exchange switched on) and `demo-backend` (only an audience) | `demo` / `Password123`, for the realm and the console |
 | step-ca | `9000` (HTTPS) | PKI and ACME: root and intermediate CA, and the ACME directory at `/acme/acme/directory` that Traefik gets its certificates from (see Gotchas for the challenge ports). Its CA lasts until `clean` | provisioner `admin`, password `Password123` |
 | Vault | `8200` | secrets management: KV at `secret/` | token `Password123` |
 | OPA | none | `shared/opa/authz.rego`: gateways evaluate it themselves, `./demo.sh test` checks it with `opa test` | |
@@ -108,6 +108,7 @@ The demo API (`api-v1` and `api-v2`, whoami named per version, on `9101` and `91
 - `./demo.sh k8s` uses its own kubeconfig for `k8s-demo`; your own `kubectl` uses your current context, so check it mid-demo.
 - **ACME (step-ca) and the challenge ports.** The directory is `https://<host>:9000/acme/acme/directory`, and the URLs in it follow the host the client used: `host.k3d.internal` from the cluster, `host.lima.internal` from the VM, `localhost` from your machine. Clients must trust the root (`certs/ca.pem`, or `https://localhost:9000/roots.pem`). The catch is validation: step-ca connects to the domain on port 80 (http-01) or 443 (tls-alpn-01), and the ACME standard allows no other port. So **the k3d cluster owns the host's `:80` and `:443`** (alongside `:8080`/`:8443`), they must be free on your machine, and step-ca resolves exactly one name, `api.traefik-hub.test`, to the host. The VM can't do ACME at the same time (it would need its own `:80`/`:443`), so it has no TLS. No certificate is pre-issued, on purpose: Traefik skips ACME for any name that a certificate it already holds covers, so one would hide the demo, and a working HTTPS request proves ACME worked.
 - Keycloak puts `http://localhost:8180` in every token as the issuer, whichever host the client dialled; the VM and the cluster still fetch keys through the host.
+- Keycloak reads `shared/keycloak/demo-realm.json` only on a fresh start. After editing it, recreate the container: `docker compose -p shared -f shared/compose.yaml up -d --force-recreate keycloak`.
 - Everything in `shared/` is lab-only: no passwords on Redis, Vault in dev mode (in memory: a restart loses its secrets), ports open on every interface.
 - Gitea is `localhost:3000`. Every password in this repo is `Password123`: fine for a lab, nowhere else.
 - **The deck:** `./docs.sh` builds `docs/deck.md.m4` plus every chapter's `slides.md`, in order, into `_site/index.html`. For one customer, name the chapters you want, in the order you want: `./docs.sh api-gateway passthrough` (a directory name like `03-api-gateway` works too). Needs `m4`, `yq`, `pandoc` and [mdp2html](https://github.com/laughingbiscuit/mdp2html). `.github/workflows/pages.yml` builds the full deck on every push to `main` and publishes it to GitHub Pages.

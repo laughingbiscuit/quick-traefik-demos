@@ -1,0 +1,45 @@
+# The caller sends a token from Keycloak that names the gateway. Traefik trades it at Keycloak (RFC 8693) for one
+# that names only the backend, and forwards that instead. whoami shows what it received. The Keycloak side (the
+# clients "demo-app", "gateway" and "demo-backend") is shared/keycloak/demo-realm.json.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: token-exchange
+  namespace: demo
+spec:
+  entryPoints: [web]
+  routes:
+    - match: PathPrefix(`/token-exchange`)
+      kind: Rule
+      middlewares:
+        - name: oauth-token-exchange
+      services:
+        - name: whoami
+          port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: oauth-token-exchange
+  namespace: demo
+spec:
+  plugin:
+    oAuthTokenExchange:
+      method: rfc8693
+      url: http://host.k3d.internal:8180/realms/demo/protocol/openid-connect/token   # Keycloak, through the host
+      clientID: urn:k8s:secret:token-exchange-client:clientID
+      clientSecret: urn:k8s:secret:token-exchange-client:clientSecret
+      rfc8693:
+        subjectTokenType: urn:ietf:params:oauth:token-type:access_token   # Keycloak only takes access tokens
+        requestedTokenType: urn:ietf:params:oauth:token-type:access_token
+        audience: demo-backend
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: token-exchange-client
+  namespace: demo
+type: Opaque
+stringData:   # the gateway's client in Keycloak. Lab-only: a real secret never goes in Git
+  clientID: gateway
+  clientSecret: Password123

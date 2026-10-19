@@ -133,6 +133,9 @@ chapter_up() {   # [N|all]: Flux applies chapters 1..N on k3d (default all) and 
       flux delete kustomization "$name" --silent 2>/dev/null || true
     fi
   done
+  for d in $(enabled_chapters); do   # a chapter that was removed or renamed leaves its Flux Kustomization behind
+    [ -f "$d/kustomization.yaml" ] || flux delete kustomization "chapter-${d#chapters/}" --silent
+  done
 }
 
 enabled_chapters() {   # the chapter directories that have a Flux Kustomization on k3d
