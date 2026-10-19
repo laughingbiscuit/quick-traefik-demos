@@ -1,5 +1,0 @@
-# Token exchange: the gateway trades the caller's token for one made for the backend.
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-  - token-exchange.yaml

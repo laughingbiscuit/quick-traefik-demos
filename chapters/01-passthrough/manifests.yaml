@@ -1,0 +1,95 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: whoami
+  namespace: demo
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.middlewares: demo-add-headers-ingress@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /passthrough
+            pathType: Prefix
+            backend:
+              service:
+                name: whoami
+                port:
+                  number: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: add-headers-ingress
+  namespace: demo
+spec:
+  headers:
+    customResponseHeaders:
+      X-Demo-Route: ingress
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: whoami
+  namespace: demo
+spec:
+  entryPoints: [web]
+  routes:
+    - match: PathPrefix(`/passthrough`) && Query(`route`, `ingressroute`)
+      kind: Rule
+      middlewares:
+        - name: add-headers-ingressroute
+      services:
+        - name: whoami
+          port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: add-headers-ingressroute
+  namespace: demo
+spec:
+  headers:
+    customResponseHeaders:
+      X-Demo-Route: ingressroute
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: whoami
+  namespace: demo
+spec:
+  parentRefs:
+    - name: traefik-gateway
+      namespace: traefik
+      sectionName: web
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /passthrough
+          queryParams:
+            - type: Exact
+              name: route
+              value: httproute
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: add-headers-httproute
+      backendRefs:
+        - name: whoami
+          port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: add-headers-httproute
+  namespace: demo
+spec:
+  headers:
+    customResponseHeaders:
+      X-Demo-Route: httproute

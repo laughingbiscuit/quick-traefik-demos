@@ -18,3 +18,6 @@ _site/
 
 # Notes for a customer session: not for Git
 /customer/
+
+# A chapter's test.sh writes its inline hurl files here while it runs
+.hurl-inline.*

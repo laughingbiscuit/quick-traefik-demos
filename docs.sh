@@ -26,6 +26,13 @@ else
 fi
 export SLIDES
 
+# A chapter holds slides.md, manifests.yaml (Kubernetes objects) or file-provider.yaml (the VM), and test.hurl or test.sh: nothing
+# else. A chapter that needs more is two chapters. (kustomization.yaml is allowed too: Flux makes one itself when it is missing.)
+allowed() { case $1 in slides.md|manifests.yaml|file-provider.yaml|kustomization.yaml|test.hurl|test.sh) return 0 ;; esac; return 1; }
+bad=
+for d in chapters/[0-9][0-9]-*/; do for f in "$d"*; do allowed "${f##*/}" || bad="$bad $f"; done; done
+[ -z "$bad" ] || { echo "docs.sh: a chapter holds more than slides.md, manifests.yaml or file-provider.yaml, and test.hurl or test.sh:$bad" >&2; exit 1; }
+
 mkdir -p _site
 m4 -P docs/deck.md.m4 > _site/deck.md
 

@@ -81,7 +81,7 @@ spec:
     # Ingress and IngressRoute are on by default, Gateway API is switched on here, and so is the file provider:
     # one instance, four sources, told apart in the dashboard by their suffix (@kubernetes, @kubernetescrd,
     # @kubernetesgateway, @file). Chapter 1's file route is below: the VM runs the same YAML from a file, with
-    # its own backend (chapters/01-passthrough/vm/passthrough.yaml).
+    # its own backend (chapters/03-file-provider/file-provider.yaml).
     providers:
       kubernetesGateway:
         enabled: true
