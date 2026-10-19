@@ -2,7 +2,11 @@
   "realm": "demo",
   "enabled": true,
   "roles": {
-    "realm": [{"name": "admin"}]
+    "realm": [
+      {
+        "name": "admin"
+      }
+    ]
   },
   "users": [
     {
@@ -12,8 +16,16 @@
       "emailVerified": true,
       "firstName": "Demo",
       "lastName": "Admin",
-      "credentials": [{"type": "password", "value": "Password123", "temporary": false}],
-      "realmRoles": ["admin"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Password123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin"
+      ]
     },
     {
       "username": "guest",
@@ -22,7 +34,13 @@
       "emailVerified": true,
       "firstName": "Demo",
       "lastName": "Guest",
-      "credentials": [{"type": "password", "value": "Password123", "temporary": false}]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Password123",
+          "temporary": false
+        }
+      ]
     }
   ],
   "clients": [
@@ -33,7 +51,61 @@
       "publicClient": false,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
-      "redirectUris": ["http://localhost:8000/*", "http://localhost:8080/*"]
+      "redirectUris": [
+        "http://localhost:8000/*",
+        "http://localhost:8080/*"
+      ]
+    },
+    {
+      "clientId": "demo-app",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "audience gateway",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "gateway",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "gateway",
+      "secret": "Password123",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "attributes": {
+        "standard.token.exchange.enabled": "true"
+      },
+      "defaultClientScopes": [
+        "basic"
+      ],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "audience demo-backend",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "demo-backend",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "demo-backend",
+      "enabled": true,
+      "bearerOnly": true
     }
   ]
 }

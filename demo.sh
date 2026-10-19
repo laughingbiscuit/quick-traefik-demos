@@ -82,15 +82,32 @@ shared_up() {   # everything in shared/compose.yaml: Gitea is already up from `g
   echo "Grafana http://localhost:3001  Keycloak http://localhost:8180  Vault http://localhost:8200  (login for all: demo / Password123)  step-ca https://localhost:9000"
 }
 
+wait_for_host_name() {   # k3d adds host.k3d.internal to CoreDNS a moment after `cluster create` returns. Flux looking it
+  # up before then fails, the miss is cached and Flux backs off, which cost up to a minute and a half in CI: wait for the name.
+  # k3s also sometimes crashes while starting (a permissions race), leaving a cluster that looks up but is dead: say so, fast
+  i=0 dead=0
+  until kubectl -n kube-system get cm coredns -o jsonpath='{.data.NodeHosts}' 2> /dev/null | grep -q host.k3d.internal; do
+    if kubectl get --raw /readyz > /dev/null 2>&1; then dead=0; else dead=$((dead+1)); fi
+    [ $dead -lt "${API_DEAD_AFTER:-20}" ] || { echo "The k3s API has not answered for ${API_DEAD_AFTER:-20}s: k3s sometimes crashes while starting. Run ./demo.sh clean, then try again" >&2; exit 1; }
+    i=$((i+1)); [ $i -lt 120 ] || { echo "host.k3d.internal never reached CoreDNS (kubectl -n kube-system get pods)" >&2; exit 1; }
+    sleep 1
+  done
+}
+
 k8s_up() {   # k3d cluster, Flux, and Traefik Hub installed by Flux from platform/k8s, then chapter 1
   need_token; need_ca
+  started=$(date +%s)   # not $SECONDS: dash, which is sh on Ubuntu, does not have it
   set -x
   repo=http://host.k3d.internal:3000/demo/gitops.git
   # The ports above are yours; the cluster owns the host's :80 and :443 too, because ACME validation only connects there
   k3d cluster create $K3D --wait -p "$K3D_HTTP:80@loadbalancer" -p "$K3D_HTTPS:443@loadbalancer" -p "$K3D_API:8082@loadbalancer" \
     -p "80:80@loadbalancer" -p "443:443@loadbalancer" --k3s-arg "--disable=traefik@server:0"
   kube
+  echo "== k3d is up after $(( $(date +%s) - started ))s"
+  wait_for_host_name
+  echo "== host.k3d.internal resolves after $(( $(date +%s) - started ))s"
   flux install
+  echo "== Flux is installed after $(( $(date +%s) - started ))s"
   kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
   flux create secret git gitea-auth --url=$repo --username=demo --password='Password123'
   kubectl create namespace traefik
@@ -99,12 +116,14 @@ k8s_up() {   # k3d cluster, Flux, and Traefik Hub installed by Flux from platfor
   set -x
   kubectl -n traefik create secret generic step-ca-root --from-file=ca.pem=certs/ca.pem   # for ACME against step-ca
   flux create source git gitops --url=$repo --branch=main --secret-ref=gitea-auth --interval=10s
+  echo "== Flux reads the repo after $(( $(date +%s) - started ))s"
   # The stack first: the chapters use Traefik's CRDs, which only exist once it is installed (they depend on it)
   flux create kustomization stack --source=GitRepository/gitops --path=./platform/k8s --prune=true --interval=10s --wait
   set +x
+  echo "== the stack is ready after $(( $(date +%s) - started ))s"
   chapter_up 1
   kubectl -n traefik rollout status deploy/traefik --timeout=300s
-  echo "k3d dashboard: http://localhost:$K3D_API/dashboard/"
+  echo "== k3d is done after $(( $(date +%s) - started ))s: dashboard http://localhost:$K3D_API/dashboard/"
 }
 
 vm_up() {   # Lima VM running platform/vm/vm-provision.sh (any Linux VM works the same way)
@@ -123,16 +142,23 @@ vm_up() {   # Lima VM running platform/vm/vm-provision.sh (any Linux VM works th
 chapter_up() {   # [N|all]: Flux applies chapters 1..N on k3d (default all) and removes the later ones
   upto=${1:-all}
   kube
+  turned_on=
   for d in chapters/[0-9][0-9]-*; do
     [ -f "$d/kustomization.yaml" ] || continue   # a chapter with no Kubernetes objects is skipped
     num=${d#chapters/}; num=$((1${num%%-*} - 100))   # 01 -> 1 (the leading 1 stops 08 being read as octal)
     name=chapter-${d#chapters/}
     if [ "$upto" = all ] || [ "$num" -le "$upto" ]; then
-      flux create kustomization "$name" --source=GitRepository/gitops --path="./$d" --depends-on=stack --prune=true --interval=10s
+      flux create kustomization "$name" --source=GitRepository/gitops --path="./$d" --depends-on=stack --prune=true --interval=10s --export | kubectl apply -f -
+      turned_on="$turned_on kustomization/$name"
     else
       flux delete kustomization "$name" --silent 2>/dev/null || true
     fi
   done
+  for d in $(enabled_chapters); do   # a chapter that was removed or renamed leaves its Flux Kustomization behind
+    [ -f "$d/kustomization.yaml" ] || flux delete kustomization "chapter-${d#chapters/}" --silent
+  done
+  # Applied together and waited for together: one slow chapter costs its own wait, not everyone's (`flux create` alone waits one by one)
+  [ -z "$turned_on" ] || kubectl -n flux-system wait --for=condition=Ready --timeout=300s $turned_on
 }
 
 enabled_chapters() {   # the chapter directories that have a Flux Kustomization on k3d
