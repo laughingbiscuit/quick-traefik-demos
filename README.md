@@ -30,7 +30,7 @@ You need Docker, `k3d`, `kubectl`, `flux`, `limactl`, `git`, `curl`, `hurl`, `jq
 ```bash
 ./demo.sh up          # Gitea, the shared services, then k3d (http://localhost:8080) and the VM (http://localhost:8000), on chapter 1
 ./demo.sh chapter 3   # turn chapters 1 to 3 on in k3d (`all` for every one; the later ones are turned off)
-./demo.sh test        # run the tests of the chapters that are on, and smoke-test the shared services
+./demo.sh test        # turn the chapters on one at a time, test each while it is the newest on, and smoke-test the shared services
 ./demo.sh export      # sanity check: run what k3d runs on the VM too, and show what works there
 ./demo.sh vm-reset    # undo export: the VM goes back to its own hand-written config
 ./demo.sh clean       # delete it all; run before `up` to rebuild
@@ -50,7 +50,7 @@ The dashboard is **http://localhost:8082/dashboard/** (keep the trailing slash).
 | 4 `04-proxy` (k3d only) | `curl --cacert certs/ca.pem https://api.traefik-hub.test/` | whoami over HTTPS, with a certificate that Traefik got from step-ca for exactly `api.traefik-hub.test`: see it with `openssl s_client -connect localhost:443 -servername api.traefik-hub.test`. Plain `http://api.traefik-hub.test/` on `:80` gets a 301 to HTTPS, as on a real site. More below |
 | 5 `05-api-gateway` | `curl -i localhost:8080/basic-auth`, then `-u demo:Password123` | `401` without the login, whoami with it |
 | 6 `06-access-control` (k3d only) | `T=$(curl -s -u partner-a:Password123 -d grant_type=client_credentials localhost:8180/realms/demo/protocol/openid-connect/token \| jq -r .access_token)`, then `curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $T" localhost:8080/orders` and `/payments`. Try `partner-b` and `internal` too | Three OAuth2 clients with equally broad tokens, and the gateway telling them apart: Partner A gets Orders (200) and Payments (403), Partner B the reverse, `internal` both. No token or a bad one is a 401; a good token from a client with no subscription is a 403. It needs API management (switched on in `platform/k8s`) |
-| 7 `07-access-control-change` (k3d only) | `sh chapters/07-access-control-change/test.sh`, or by hand: apply the `ManagedSubscription` in that script | Partner A's token gets 403 on `/payments`. Add one subscription and it gets 200 within a second or two, with the same token and nothing changed in Keycloak; delete it and it is 403 again |
+| 7 `07-access-control-change` (k3d only) | `./demo.sh chapter 6`, then `curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $T" localhost:8080/payments` with Partner A's token `T` (as in chapter 6); then `./demo.sh chapter 7` and call it again | 403 at chapter 6. Chapter 7 adds one `ManagedSubscription` for Partner A (`chapters/07-access-control-change/manifests.yaml`), which Flux applies, and a second or two later it is 200: same token, nothing changed in Keycloak. `./demo.sh chapter 6` takes it away again |
 | 8 `08-token-exchange` (k3d only) | `TOKEN=$(curl -s -d grant_type=password -d client_id=demo-app -d username=demo -d password=Password123 localhost:8180/realms/demo/protocol/openid-connect/token \| jq -r .access_token)`, then `curl -s -H "Authorization: Bearer $TOKEN" localhost:8080/token-exchange` | whoami's answer, with an `Authorization` header that is **not** your token: Traefik traded it at Keycloak (RFC 8693) for one made for the backend (`aud: demo-backend`, `azp: gateway`, same user, no email or roles). Without a token, or with one Keycloak won't exchange, you get a 401. It uses Traefik Hub's `oAuthTokenExchange` middleware, which is early access |
 | 9 `09-access-control-users` (k3d only) | `T=$(curl -s -d grant_type=password -d client_id=demo-app -d username=guest -d password=Password123 localhost:8180/realms/demo/protocol/openid-connect/token \| jq -r .access_token)`, then `curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $T" localhost:8080/catalog` and `/admin`. Try `demo` too | People instead of machines, through one application. `demo` (role `admin`) gets Catalog and Admin (200); `guest` gets Catalog (200) and Admin (403). What a person may call comes from the claims in their token (a role), checked by the subscription |
 | 10 `10-access-control-oidc` (k3d only) | open `http://localhost:8080/portal` in a browser, and sign in as `demo` or `guest` (password `Password123`) | The gateway runs the login, which is OAuth2's authorization code flow (with PKCE), with OpenID Connect on top for who signed in (ID token, discovery): no session means a redirect to Keycloak. After sign-in the page is told who you are (`X-User`) and gets your access token as a bearer token. The app then calls `/profile` with it: 200 for `demo`, 403 for `guest`. The login and the API are two routes, because on one route the API check runs before the login |
@@ -79,16 +79,17 @@ exception: allowed, and Flux makes one itself when it is missing.)
 1. **Where a test runs.** The `test.hurl` of a chapter with `manifests.yaml` (or with no manifests) runs on k3d, and on the VM
    after `export` unless its first lines say `# Kubernetes only: <why>`: `export` prints that reason in its table. The test of
    a chapter with `file-provider.yaml` runs against the VM.
-2. **When it needs a script.** `test.sh` is for what a hurl file cannot do: changing the cluster in the middle of a test, or
-   keeping two sessions apart. It runs on k3d only, after the hurl tests, and says why on its second line
-   (`# Kubernetes only: <why>`). Put hurl in it with `hurl_inline <label> <<'HURL'` (see `chapters/lib.sh`, and chapters 7 and 10).
-   A script that changes the cluster has to add an object Flux does not own: Flux keeps the cluster equal to Git, so an edit to a
-   manifest would be undone within seconds.
-3. Chapters run together, so give your routes their own path prefix or host: two with the same rule collide.
-4. A backend it needs (Redis, Keycloak, ...) goes in `shared/compose.yaml`: both reach it through the host. A backend of its own
+2. **Chapters build on each other.** `./demo.sh test` turns the chapters on one at a time and runs each chapter's test while it is
+   the newest one on, so a chapter can change what an earlier one showed: 07 adds the access that 06 shows denied, as a manifest
+   Flux applies. Turning a chapter off makes Flux remove what it added.
+3. **When it needs a script.** `test.sh` is for what a hurl file cannot do, like keeping two sessions apart (chapter 10). It runs on
+   k3d only, after the hurl test, and says why on its second line (`# Kubernetes only: <why>`). Put hurl in it with
+   `hurl_inline <label> <<'HURL'` (see `chapters/lib.sh`).
+4. Chapters run together, so give your routes their own path prefix or host: two with the same rule collide.
+5. A backend it needs (Redis, Keycloak, ...) goes in `shared/compose.yaml`: both reach it through the host. A backend of its own
    goes in the chapter's manifests, or in `platform/` if several chapters share it. On the VM it is a systemd unit in
    `platform/vm/vm-provision.sh` (see `whoami`).
-5. Slides show the chapter's real files with `m4_esyscmd` / `m4_include` (see `chapters/06-access-control/slides.md`), with the
+6. Slides show the chapter's real files with `m4_esyscmd` / `m4_include` (see `chapters/06-access-control/slides.md`), with the
    file's path written above the block: `./docs.sh` fails if a slide names a file that does not exist. Paths are from the repo
    root. Begin `slides.md` with a `---` line, and keep it free of "chapter N" and of references to other chapters' slides: the deck
    is assembled per customer, so every chapter's slides must stand alone.

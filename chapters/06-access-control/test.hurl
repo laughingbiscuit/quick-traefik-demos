@@ -1,4 +1,5 @@
 # Kubernetes only: the gateway gets Keycloak's keys through host.k3d.internal, and the clients are Kubernetes objects.
+# Partner A is denied Payments here. The chapter after adds that access, so ./demo.sh test runs this while this chapter is the newest on.
 # Every client signs in with the OAuth2 client credentials grant. Their tokens are equally broad: the same scope, and
 # both APIs in the audience. Only the gateway tells them apart.
 

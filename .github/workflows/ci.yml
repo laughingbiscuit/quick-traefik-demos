@@ -1,4 +1,4 @@
-# demos: build both demos, turn every chapter on, test them all, export k3d's config to the VM and test that too,
+# demos: build both demos, turn the chapters on one at a time and test each, export k3d's config to the VM and test that too,
 #        then put the VM back on its own config. Needs a HUB_TOKEN repository secret (an online Traefik Hub gateway token).
 # deck:  build the workshop deck, in full and for one customer. The Pages workflow only runs on main.
 name: ci
@@ -48,11 +48,9 @@ jobs:
           sudo HUB_TOKEN="$HUB_TOKEN" GITOPS_REPO=http://demo:Password123@localhost:3000/demo/gitops.git sh platform/vm/vm-provision.sh
           timeout 300 sh -c 'until curl -sf http://localhost:8001/ping; do sleep 2; done'
 
-      - name: Turn every chapter on
-        run: ./demo.sh chapter all
-
-      # VM_LOCAL=1: the runner is the VM, so the VM steps use sudo instead of Lima
-      - name: Test both demos
+      # VM_LOCAL=1: the runner is the VM, so the VM steps use sudo instead of Lima. `test` turns the chapters on one at a time
+      # and tests each while it is the newest one on
+      - name: Turn the chapters on one at a time, and test both demos
         run: VM_LOCAL=1 ./demo.sh test
 
       - name: Export k3d's config to the VM and test it there
@@ -61,7 +59,7 @@ jobs:
       - name: Put the VM back on its own config and test it
         run: |
           VM_LOCAL=1 ./demo.sh vm-reset
-          VM_LOCAL=1 ./demo.sh test
+          VM_LOCAL=1 ./demo.sh test chapters/03-file-provider/test.hurl
 
       - name: Diagnostics
         if: failure()
