@@ -34,18 +34,18 @@ __Service__
 
 ## A router, a middleware and a service
 
-`chapters/01-passthrough/ingressroute.yaml`
+`chapters/01-passthrough/manifests.yaml`
 
 ```
-m4_esyscmd([[[sed 's/^---$//' chapters/01-passthrough/ingressroute.yaml]]])
+m4_esyscmd([[[yq 'select(.kind == "IngressRoute" or (.kind == "Middleware" and .metadata.name == "add-headers-ingressroute"))' chapters/01-passthrough/manifests.yaml | sed 's/^---$//']]])
 ```
 
 ---
 
 ## Three ways to write a route on Kubernetes
 
-- __Ingress__ - the Kubernetes standard. Traefik settings go in annotations, checked only at runtime: `chapters/01-passthrough/ingress.yaml`
-- __IngressRoute__ - Traefik's own object. Every Traefik feature, validated when you deploy: `chapters/01-passthrough/ingressroute.yaml`
-- __HTTPRoute__ - the Gateway API, the standard's successor to Ingress: `chapters/01-passthrough/httproute.yaml`
+- __Ingress__ - the Kubernetes standard. Traefik settings go in annotations, checked only at runtime
+- __IngressRoute__ - Traefik's own object. Every Traefik feature, validated when you deploy
+- __HTTPRoute__ - the Gateway API, the standard's successor to Ingress
 
-Same job, three ways of writing it
+Same job, three ways of writing it: all three are in `chapters/01-passthrough/manifests.yaml`, and `chapters/01-passthrough/test.hurl` calls each

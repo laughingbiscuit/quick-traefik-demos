@@ -1,7 +1,0 @@
-# API access control with OpenID Connect: a person signs in at the gateway, and the app they use calls a protected API with the
-# access token the gateway forwards to it.
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-  - portal.yaml
-  - profile-api.yaml

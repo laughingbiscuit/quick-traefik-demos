@@ -42,7 +42,7 @@ services:
   keycloak:   # realm "demo" is imported on start: see keycloak/demo-realm.json
     image: quay.io/keycloak/keycloak:26.8.1
     # HTTPS with a self-signed certificate, made on every start (so no key sits in Git): Traefik Hub only fetches the
-    # JWKS of a token issuer over HTTPS. Lab-only: clients must skip verification (see chapters/04-api-access-control)
+    # JWKS of a token issuer over HTTPS. Lab-only: clients must skip verification (see chapters/06-access-control)
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |

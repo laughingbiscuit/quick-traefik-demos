@@ -1,0 +1,130 @@
+# Two backends, Catalog and Admin. whoami echoes what it receives, so a test can see what the gateway forwarded.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: catalog, namespace: demo}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: catalog}}
+  template:
+    metadata: {labels: {app: catalog}}
+    spec:
+      containers:
+        - name: whoami
+          image: traefik/whoami:v1.10
+          args: ["--name", "catalog-api"]
+          ports: [{containerPort: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: catalog, namespace: demo}
+spec:
+  selector: {app: catalog}
+  ports: [{port: 80}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: admin, namespace: demo}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: admin}}
+  template:
+    metadata: {labels: {app: admin}}
+    spec:
+      containers:
+        - name: whoami
+          image: traefik/whoami:v1.10
+          args: ["--name", "admin-api"]
+          ports: [{containerPort: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: admin, namespace: demo}
+spec:
+  selector: {app: admin}
+  ports: [{port: 80}]
+---
+# The same token check as for machines: signed by the demo realm, issued by it. Here the claim "azp" names the
+# application the person used (demo-app), and the person is passed on as a header for the backend.
+apiVersion: hub.traefik.io/v1alpha1
+kind: APIAuth
+metadata:
+  name: users-jwt
+  namespace: demo
+spec:
+  isDefault: false
+  jwt:
+    appIdClaim: azp
+    trustedIssuers:
+      - issuer: http://localhost:8180/realms/demo
+        jwksUrl: https://host.k3d.internal:8543/realms/demo/protocol/openid-connect/certs   # Hub fetches keys over HTTPS only
+    forwardHeaders:
+      X-User: preferred_username   # the backend gets who signed in from the token, not from the caller
+    clientConfig:
+      tls:
+        insecureSkipVerify: true   # lab only: Keycloak's certificate here is self-signed
+---
+apiVersion: hub.traefik.io/v1alpha1
+kind: API
+metadata: {name: catalog, namespace: demo}
+spec:
+  title: Catalog
+  apiAuths: [{name: users-jwt}]
+---
+apiVersion: hub.traefik.io/v1alpha1
+kind: API
+metadata: {name: admin, namespace: demo}
+spec:
+  title: Admin
+  apiAuths: [{name: users-jwt}]
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: catalog
+  namespace: demo
+  annotations: {hub.traefik.io/api: catalog}
+spec:
+  entryPoints: [web]
+  routes:
+    - {match: "PathPrefix(`/catalog`)", kind: Rule, services: [{name: catalog, port: 80}]}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: admin
+  namespace: demo
+  annotations: {hub.traefik.io/api: admin}
+spec:
+  entryPoints: [web]
+  routes:
+    - {match: "PathPrefix(`/admin`)", kind: Rule, services: [{name: admin, port: 80}]}
+---
+# One application, demo-app: every person comes through it. What a person may call is decided by the claims in their
+# token: anyone who signed in can read the Catalog, only someone with the admin role can reach Admin.
+apiVersion: hub.traefik.io/v1alpha1
+kind: APIPlan
+metadata: {name: users-standard, namespace: demo}
+spec: {title: Users}
+---
+apiVersion: hub.traefik.io/v1alpha1
+kind: ManagedApplication
+metadata: {name: demo-app, namespace: demo}
+spec: {appId: demo-app, owner: users}
+---
+apiVersion: hub.traefik.io/v1alpha1
+kind: ManagedSubscription
+metadata: {name: catalog-for-users, namespace: demo}
+spec:
+  apiPlan: {name: users-standard}
+  apis: [{name: catalog}]
+  managedApplications: [{name: demo-app}]
+  claims: "Contains(`aud`, `gateway`)"
+---
+apiVersion: hub.traefik.io/v1alpha1
+kind: ManagedSubscription
+metadata: {name: admin-for-admins, namespace: demo}
+spec:
+  apiPlan: {name: users-standard}
+  apis: [{name: admin}]
+  managedApplications: [{name: demo-app}]
+  claims: "Contains(`aud`, `gateway`) && Contains(`realm_access.roles`, `admin`)"

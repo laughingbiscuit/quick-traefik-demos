@@ -138,40 +138,50 @@ vm_up() {   # Lima VM running platform/vm/vm-provision.sh (any Linux VM works th
   echo "VM up: http://localhost:$VM_HTTP"
 }
 
-# --- Chapters: which are on in k3d, and their tests ---------------------------------------------------------------
-chapter_up() {   # [N|all]: Flux applies chapters 1..N on k3d (default all) and removes the later ones
+# --- Chapters: which are on, and their tests ---------------------------------------------------------------------
+# A chapter is a directory with slides.md, manifests.yaml (Kubernetes objects: Flux applies them on k3d) or
+# file-provider.yaml (Traefik's own YAML: the VM runs it), and test.hurl or test.sh. Any of them can be missing.
+chapter_num() { n=${1#chapters/}; echo $((1${n%%-*} - 100)); }   # chapters/01-x -> 1 (the leading 1 stops 08 being read as octal)
+
+chapter_up() {   # [N|all]: chapters 1..N are on: Flux applies their manifests on k3d, and the later ones are taken off
   upto=${1:-all}
   kube
   turned_on=
   for d in chapters/[0-9][0-9]-*; do
-    [ -f "$d/kustomization.yaml" ] || continue   # a chapter with no Kubernetes objects is skipped
-    num=${d#chapters/}; num=$((1${num%%-*} - 100))   # 01 -> 1 (the leading 1 stops 08 being read as octal)
+    [ -f "$d/manifests.yaml" ] || continue   # no Kubernetes objects in this chapter: nothing for Flux
     name=chapter-${d#chapters/}
-    if [ "$upto" = all ] || [ "$num" -le "$upto" ]; then
+    if [ "$upto" = all ] || [ "$(chapter_num "$d")" -le "$upto" ]; then
       flux create kustomization "$name" --source=GitRepository/gitops --path="./$d" --depends-on=stack --prune=true --interval=10s --export | kubectl apply -f -
       turned_on="$turned_on kustomization/$name"
     else
       flux delete kustomization "$name" --silent 2>/dev/null || true
     fi
   done
-  for d in $(enabled_chapters); do   # a chapter that was removed or renamed leaves its Flux Kustomization behind
-    [ -f "$d/kustomization.yaml" ] || flux delete kustomization "chapter-${d#chapters/}" --silent
+  for k in $(kubectl -n flux-system get kustomization -o name 2>/dev/null | sed 's#.*/##' | grep '^chapter-'); do   # a removed or renamed chapter
+    [ -f "chapters/${k#chapter-}/manifests.yaml" ] || flux delete kustomization "$k" --silent
   done
+  # Which chapters are on is kept for `test`: a chapter with no objects has no Flux Kustomization to ask
+  kubectl -n flux-system create configmap demo-chapters --from-literal=upto="$upto" --dry-run=client -o yaml | kubectl apply -f - > /dev/null
   # Applied together and waited for together: one slow chapter costs its own wait, not everyone's (`flux create` alone waits one by one)
   [ -z "$turned_on" ] || kubectl -n flux-system wait --for=condition=Ready --timeout=300s $turned_on
 }
 
-enabled_chapters() {   # the chapter directories that have a Flux Kustomization on k3d
+enabled_chapters() {   # the chapters that are on: up to the level `chapter` last set
   kube
-  for k in $(kubectl get kustomization -n flux-system -o name 2>/dev/null); do
-    case ${k##*/} in chapter-*) echo "chapters/${k##*/chapter-}" ;; esac
-  done | sort
+  upto=$(kubectl -n flux-system get configmap demo-chapters -o jsonpath='{.data.upto}' 2>/dev/null) || upto=
+  [ -n "$upto" ] || return 0
+  for d in chapters/[0-9][0-9]-*; do
+    if [ "$upto" = all ] || [ "$(chapter_num "$d")" -le "$upto" ]; then echo "$d"; fi
+  done
 }
 
-# The test files of the given chapters: *.hurl pass on k3d and on the exported VM, *.k8s.hurl on k3d only,
-# *.vm.hurl on everything, including the hand-written VM. A *.k8s.sh script runs on k3d only, after the hurl files: for
-# what a hurl file cannot do, like changing the cluster in the middle of a test
-chapter_tests() { for d in "$@"; do ls "$d"/*.hurl 2>/dev/null || true; done; }
+# Where a test runs. A chapter with file-provider.yaml is about the VM: its test.hurl goes to the VM. The test.hurl of
+# any other chapter goes to k3d, and to the VM after `export` unless its first lines say "# Kubernetes only: <why>".
+# A test.sh runs on k3d only, after the hurl tests: for what a hurl file cannot do, like changing the cluster mid-test.
+k8s_only() { head -3 "$1" | grep -q '^# Kubernetes only:'; }
+k8s_only_reason() { head -3 "$1" | sed -n 's/^# Kubernetes only: //p'; }
+k3d_tests() { for d in "$@"; do if [ -f "$d/test.hurl" ] && [ ! -f "$d/file-provider.yaml" ]; then echo "$d/test.hurl"; fi; done; }
+vm_own_tests() { for d in "$@"; do if [ -f "$d/test.hurl" ] && [ -f "$d/file-provider.yaml" ]; then echo "$d/test.hurl"; fi; done; }
 
 # --- Sanity check: k3d's config on the VM -------------------------------------------------------------------------
 vm_exported() { vm_sudo test -f /etc/traefik/dynamic/exported.yaml; }   # is the VM running `export`'s config?
@@ -192,16 +202,18 @@ export_vm() {   # k3d's config, as file-provider YAML, on the VM
 export_matrix() {   # every enabled chapter's tests against the VM: what runs there on the exported config, and what doesn't
   status=0
   echo "== what runs on the VM, from the exported config"
-  for f in $(chapter_tests $(enabled_chapters)); do
-    case $f in
-      *.k8s.hurl) printf '  %-5s %s\n        %s\n' SKIP "$f" "$(sed -n '1s/^# Kubernetes only: //p' "$f")" ;;
-      *) if result=$(hurl --test --retry 20 --retry-interval 1000 --cacert certs/ca.pem \
+  for d in $(enabled_chapters); do
+    for f in "$d/test.hurl" "$d/test.sh"; do
+      [ -f "$f" ] || continue
+      if [ "${f%.sh}" != "$f" ] || k8s_only "$f"; then   # a script, or a test that says it is Kubernetes only
+        printf '  %-5s %s\n        %s\n' SKIP "$f" "$(k8s_only_reason "$f")"
+      elif result=$(hurl --test --retry 20 --retry-interval 1000 --cacert certs/ca.pem \
                       --variable base_url=http://localhost:$VM_HTTP --variable tls_port= "$f" 2>&1); then
-           printf '  %-5s %s\n' PASS "$f"
-         else
-           printf '  %-5s %s\n' FAIL "$f"; echo "$result"; status=1
-         fi ;;
-    esac
+        printf '  %-5s %s\n' PASS "$f"
+      else
+        printf '  %-5s %s\n' FAIL "$f"; echo "$result"; status=1
+      fi
+    done
   done
   return $status
 }
@@ -234,18 +246,16 @@ test_all() {   # hurl retries for up to 20s, so this can run straight after `syn
   need_ca
   chapters=$(enabled_chapters)
   [ -n "$chapters" ] || { echo "No chapter is on: ./demo.sh chapter 1"; return 1; }
-  # k3d runs every test of the enabled chapters. The VM runs the *.vm.hurl ones (they match its hand-written config),
-  # or, after `export`, all of them except the *.k8s.hurl ones (Kubernetes only)
-  if [ $# -gt 0 ]; then k8s_files="$*"; vm_files=$(printf '%s\n' "$@" | grep -v '\.k8s\.hurl$' || true)
+  if [ $# -gt 0 ]; then k8s_files="$*"; vm_files=$(for f in "$@"; do k8s_only "$f" || echo "$f"; done)
   else
-    k8s_files=$(chapter_tests $chapters)
-    if vm_exported; then vm_files=$(chapter_tests $chapters | grep -v '\.k8s\.hurl$' || true)
-    else vm_files=$(for d in $chapters; do ls $d/*.vm.hurl 2>/dev/null || true; done); fi
+    k8s_files=$(k3d_tests $chapters)
+    vm_files=$(vm_own_tests $chapters)   # the VM's own chapters, and after `export` every test that can run there
+    if vm_exported; then vm_files="$vm_files $(for f in $k8s_files; do k8s_only "$f" || echo "$f"; done)"; fi
   fi
   for target in k3d vm; do   # HTTPS (ACME) is on k3d only
     if [ $target = k3d ]; then files=$k8s_files; port=$K3D_HTTP; tls=$K3D_HTTPS; label="k3d (localhost:$port, HTTPS on $tls)"
     else files=$vm_files; port=$VM_HTTP; tls=; label="VM (localhost:$port)"; vm_exported && label="$label, exported config"; fi
-    [ -n "$files" ] || { echo "== $label: no tests"; continue; }
+    [ -n "$(echo $files)" ] || { echo "== $label: no tests"; continue; }
     echo "== $label"
     hurl --test --retry 20 --retry-interval 1000 --cacert certs/ca.pem \
       --variable base_url="http://localhost:$port" --variable tls_port="$tls" $files || status=1
@@ -253,10 +263,8 @@ test_all() {   # hurl retries for up to 20s, so this can run straight after `syn
   if [ $# -eq 0 ]; then   # the scripts, unless you named hurl files
     kube
     for d in $chapters; do
-      for f in "$d"/*.k8s.sh; do
-        [ -f "$f" ] || continue
-        echo "== $f"; sh "$f" || status=1
-      done
+      [ -f "$d/test.sh" ] || continue
+      echo "== $d/test.sh"; sh "$d/test.sh" || status=1
     done
   fi
   return $status

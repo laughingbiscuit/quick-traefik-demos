@@ -53,11 +53,11 @@ TRAEFIK_CONFIG=/etc/traefik/dynamic
 [ -d $REPO ] || git clone -q "$GITOPS_REPO" $REPO
 git -C $REPO fetch -q && git -C $REPO reset -q --hard origin/main
 
-# Dynamic config: every chapter's hand-written vm/*.yaml (only chapter 1 has one: the
-# rest comes from `./demo.sh export`, which stops this sync). Traefik hot-reloads it.
+# Dynamic config: every chapter's file-provider.yaml (the chapters about the VM; the rest comes from `./demo.sh export`,
+# which stops this sync). Traefik hot-reloads it.
 rm -rf /tmp/enabled && mkdir -m 755 /tmp/enabled
-for f in $REPO/chapters/*/vm/*.yaml; do
-  [ -e "$f" ] && cp "$f" "/tmp/enabled/$(basename "$(dirname "$(dirname "$f")")")-$(basename "$f")"
+for f in $REPO/chapters/*/file-provider.yaml; do
+  if [ -e "$f" ]; then cp "$f" "/tmp/enabled/$(basename "$(dirname "$f")").yaml"; fi
 done
 mkdir -p $TRAEFIK_CONFIG && rsync -a --delete /tmp/enabled/ $TRAEFIK_CONFIG/
 

@@ -20,7 +20,7 @@ A request arrives. Each part of this session answers one question about it
 
 # The plan
 
-m4_esyscmd([[[for c in $SLIDES; do for f in chapters/$c/slides.md chapters/$c/slides.[0-9].md; do [ -f "$f" ] && grep -m1 '^# ' "$f" | sed 's/^# /- /'; done; done]]])
+m4_esyscmd([[[for c in $SLIDES; do grep -m1 '^# ' chapters/$c/slides.md | sed 's/^# /- /'; done]]])
 
 ---
 
@@ -51,7 +51,7 @@ One binary that runs on:
 
 This demo uses Flux/Helm for Kubernetes and the binary in systemd on VM
 
-m4_esyscmd([[[for c in $SLIDES; do for f in chapters/$c/slides.md chapters/$c/slides.[0-9].md; do [ -f "$f" ] && { cat "$f"; printf '\n\n'; }; done; done]]])
+m4_esyscmd([[[for c in $SLIDES; do cat chapters/$c/slides.md; printf '\n\n'; done]]])
 
 ---
 
