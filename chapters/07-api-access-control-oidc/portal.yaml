@@ -1,4 +1,4 @@
-# A web page behind a login the gateway runs: the OpenID Connect authorization code flow with PKCE. Without a session the
+# A web page behind a login the gateway runs: the OAuth2 authorization code flow with PKCE, with OpenID Connect on top (discovery, and an ID token for who signed in). Without a session the
 # browser is sent to Keycloak; with one, the page gets the person's access token as a bearer token, plus who they are.
 # whoami echoes what it receives. The API checks (profile-api.yaml) cannot sit on this route: they run before the login.
 apiVersion: apps/v1

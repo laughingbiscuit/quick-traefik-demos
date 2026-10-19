@@ -95,7 +95,8 @@ jobs:
           ./docs.sh
           grep -q '^# Passthrough' _site/deck.md
           # Slides are assembled per customer, so none may say "chapter" or lean on another chapter's slides
-          ! grep -qi 'chapter' _site/deck.md
+          # (the word may appear in a path like chapters/04-api-access-control/, which links a slide to its code)
+          ! grep -i 'chapter' _site/deck.md | grep -qv 'chapters/'
 
       - name: Build a deck for one customer, in the order asked for
         run: |
