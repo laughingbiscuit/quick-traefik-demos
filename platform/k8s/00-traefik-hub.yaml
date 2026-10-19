@@ -31,6 +31,8 @@ spec:
   values:
     hub:
       token: traefik-hub-license   # Secret name; also switches the image to ghcr.io/traefik/traefik-hub
+      apimanagement:
+        enabled: true              # API management: APIs, plans, managed applications and subscriptions. Needs a licence that includes it
     image:
       tag: v3.21.2                 # only the tag: setting image.repository too gives ghcr.io/ghcr.io/...
     # Step 1 - Entrypoint: "web", explicit: container port 8000, exposed as :80 by the k3d load balancer.

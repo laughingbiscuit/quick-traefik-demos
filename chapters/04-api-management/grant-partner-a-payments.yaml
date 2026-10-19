@@ -1,0 +1,10 @@
+# NOT in kustomization.yaml: the grant that dynamic-access.k8s.sh applies and removes. Partner A's token and its Keycloak
+# client stay exactly as they are; one more subscription is all it takes to let Partner A call Payments.
+apiVersion: hub.traefik.io/v1alpha1
+kind: ManagedSubscription
+metadata: {name: payments-access-partner-a, namespace: demo}
+spec:
+  apiPlan: {name: standard}
+  apis: [{name: payments}]
+  managedApplications: [{name: partner-a}]
+  claims: "Contains(`aud`, `payments-api`)"
