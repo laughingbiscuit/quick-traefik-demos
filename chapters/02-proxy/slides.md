@@ -2,6 +2,8 @@
 
 # Proxy: TLS from ACME
 
+*How do I serve HTTPS without managing certificates by hand?*
+
 ACME (RFC 8555) lets software get a certificate from a CA with no human in the loop
 
 Three parties:
@@ -10,6 +12,20 @@ Three parties:
 - __CA__ (e.g. DigiCert, Let's Encrypt, or whatever the customer uses today; in this demo step-ca): it decides what to trust
   Any CA that speaks ACME works the same way. You change `caServer`, add `caCertificates` for a private CA, and add `eab` if the CA needs external account binding (DigiCert does)
 - __You__ are the operator: you say which CA, which names and which challenge
+
+---
+
+## The scenario
+
+__The cast__
+
+- a service, `whoami`, that should be reachable over HTTPS at `api.traefik-hub.test`
+- Traefik, which gets the certificate itself: it is the ACME client
+- a CA: `step-ca` here, DigiCert or Let's Encrypt in real life
+
+__We will__ open the service over HTTPS and look at the certificate
+
+__You will see__ whoami answer over HTTPS, a certificate issued to exactly that name by the CA, and plain HTTP sent on to HTTPS
 
 ---
 
@@ -53,7 +69,7 @@ Proof of control = being the one who answers on port 80 for that name
 ## ACME - what you configure
 
 ```
-certificatesResolvers:            # static: the install
+certificatesResolvers:            # static: the install (platform/k8s/00-traefik-hub.yaml)
   step:
     acme:
       email: demo@example.com
@@ -62,7 +78,7 @@ certificatesResolvers:            # static: the install
       httpChallenge:
         entryPoint: web
 
-tls:                              # dynamic: on the route
+tls:                              # dynamic: on the route (chapters/02-proxy/acme.yaml)
   certResolver: step
 ```
 

@@ -14,6 +14,14 @@ date: m4_esyscmd([[[date +%d/%m/%y]]])
 Traefik provides a self-configuring layer to route, secure and observe
   traffic across VMs, K8s, APIs, MCP and LLMs in a single binary
 
+A request arrives. Each part of this session answers one question about it
+
+---
+
+# The plan
+
+m4_esyscmd([[[for c in $SLIDES; do for f in chapters/$c/slides.md chapters/$c/slides.[0-9].md; do [ -f "$f" ] && grep -m1 '^# ' "$f" | sed 's/^# /- /'; done; done]]])
+
 ---
 
 # Lab Environment
@@ -43,4 +51,13 @@ One binary that runs on:
 
 This demo uses Flux/Helm for Kubernetes and the binary in systemd on VM
 
-m4_esyscmd([[[for c in $SLIDES; do cat chapters/$c/slides.md; printf '\n\n'; done]]])
+m4_esyscmd([[[for c in $SLIDES; do for f in chapters/$c/slides.md chapters/$c/slides.[0-9].md; do [ -f "$f" ] && { cat "$f"; printf '\n\n'; }; done; done]]])
+
+---
+
+# Try it yourself
+
+Every example here is in the [repo](https://github.com/laughingbiscuit/quick-traefik-demos), with tests
+
+`./demo.sh up` builds the lab, `./demo.sh test` checks it
+

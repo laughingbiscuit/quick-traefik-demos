@@ -29,6 +29,10 @@ export SLIDES
 mkdir -p _site
 m4 -P docs/deck.md.m4 > _site/deck.md
 
+# Slides name the files they come from: every one must exist, or a slide points at code that has moved.
+missing=$(grep -ohE '(chapters|platform|shared)/[A-Za-z0-9_./-]+\.(yaml|yml|hurl|sh|json|md)' _site/deck.md | sort -u | while read -r f; do [ -f "$f" ] || printf ' %s' "$f"; done)
+[ -z "$missing" ] || { echo "docs.sh: a slide names files that do not exist:$missing" >&2; exit 1; }
+
 # mdp2html reads a --- straight after a line of text as a heading underline, not a slide break: the slides on either
 # side would merge. Every --- needs a blank line before it (code blocks are left alone).
 bad=$(awk '/^[ \t]*```/ { fence = !fence } !fence && $0 == "---" && prev != "" { printf " %d", NR } { prev = $0 }' _site/deck.md)
