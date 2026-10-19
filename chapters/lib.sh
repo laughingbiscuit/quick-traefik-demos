@@ -1,6 +1,5 @@
 # Helpers for a chapter's test.sh. Source it:   . "$(dirname "$0")/../lib.sh"
-# The k3d demo on localhost: the gateway on :8080, Keycloak on :8180. Needs curl, jq and hurl.
-KEYCLOAK=${KEYCLOAK:-http://localhost:8180}
+# The k3d demo on localhost: the gateway on :8080. Needs hurl.
 BASE=${BASE:-http://localhost:8080}
 fails=0
 
@@ -8,9 +7,6 @@ step() { printf '\n%s\n' "$*"; }
 ok()   { printf '  ok    %s\n' "$*"; }
 bad()  { printf '  FAIL  %s\n' "$*"; fails=$((fails+1)); }
 finish() { echo; if [ $fails -eq 0 ]; then echo "all passed"; else echo "$fails failed"; exit 1; fi; }
-
-# token <client>: an access token from the OAuth2 client credentials grant (every client's secret is Password123)
-token() { curl -s -u "${1}:Password123" -d grant_type=client_credentials "$KEYCLOAK/realms/demo/protocol/openid-connect/token" | jq -r .access_token; }
 
 # hurl_inline <label> [hurl options]: a hurl file on stdin, run against the k3d demo ({{base_url}}). A request that fails is
 # retried for up to 20s, because the gateway takes a moment to pick up what was just applied. Each call has its own cookies

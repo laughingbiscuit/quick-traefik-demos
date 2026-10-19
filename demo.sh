@@ -5,10 +5,10 @@
 #   ./demo.sh sync      push this working tree to Gitea: k3d and the VM pick it up within ~20s
 #   ./demo.sh export    sanity check: turn what k3d runs into file-provider YAML, run that on the VM, and show what works there
 #   ./demo.sh vm-reset  undo `export`: the VM goes back to its own hand-written config
-#   ./demo.sh test      run the tests of the enabled chapters (or the files you name), plus the shared services' smoke tests
+#   ./demo.sh test      turn the chapters on one at a time and test each while it is the newest on (or test the files you name), plus the shared services' smoke tests
 #   ./demo.sh smoke     just the smoke tests of the shared services
 #   ./demo.sh clean     delete everything the demos created (your changes stay in this repo)
-#   ./demo.sh rebuild   clean, up, every chapter, test and export in one: a from-scratch check that everything works
+#   ./demo.sh rebuild   clean, up, test and export in one: a from-scratch check that everything works
 # `up` runs the steps `git`, `shared`, `k8s` and `vm`, which you can also run one at a time.
 # VM_LOCAL=1 means this machine is the VM (CI): `export` and `test` then use sudo instead of Lima.
 set -e
@@ -151,7 +151,7 @@ chapter_up() {   # [N|all]: chapters 1..N are on: Flux applies their manifests o
     [ -f "$d/manifests.yaml" ] || continue   # no Kubernetes objects in this chapter: nothing for Flux
     name=chapter-${d#chapters/}
     if [ "$upto" = all ] || [ "$(chapter_num "$d")" -le "$upto" ]; then
-      flux create kustomization "$name" --source=GitRepository/gitops --path="./$d" --depends-on=stack --prune=true --interval=10s --export | kubectl apply -f -
+      flux create kustomization "$name" --source=GitRepository/gitops --path="./$d" --depends-on=stack --prune=true --interval=10s --export | kubectl apply -f - > /dev/null
       turned_on="$turned_on kustomization/$name"
     else
       flux delete kustomization "$name" --silent 2>/dev/null || true
@@ -163,7 +163,8 @@ chapter_up() {   # [N|all]: chapters 1..N are on: Flux applies their manifests o
   # Which chapters are on is kept for `test`: a chapter with no objects has no Flux Kustomization to ask
   kubectl -n flux-system create configmap demo-chapters --from-literal=upto="$upto" --dry-run=client -o yaml | kubectl apply -f - > /dev/null
   # Applied together and waited for together: one slow chapter costs its own wait, not everyone's (`flux create` alone waits one by one)
-  [ -z "$turned_on" ] || kubectl -n flux-system wait --for=condition=Ready --timeout=300s $turned_on
+  [ -z "$turned_on" ] || kubectl -n flux-system wait --for=condition=Ready --timeout=300s $turned_on > /dev/null
+  if [ "$upto" = all ]; then echo "== every chapter is on"; else echo "== chapters 1 to $upto are on"; fi
 }
 
 enabled_chapters() {   # the chapters that are on: up to the level `chapter` last set
@@ -175,13 +176,11 @@ enabled_chapters() {   # the chapters that are on: up to the level `chapter` las
   done
 }
 
-# Where a test runs. A chapter with file-provider.yaml is about the VM: its test.hurl goes to the VM. The test.hurl of
-# any other chapter goes to k3d, and to the VM after `export` unless its first lines say "# Kubernetes only: <why>".
-# A test.sh runs on k3d only, after the hurl tests: for what a hurl file cannot do, like changing the cluster mid-test.
+# Where a test runs. A chapter with file-provider.yaml is about the VM: its test.hurl goes to the VM. The test.hurl of any other
+# chapter goes to k3d, and to the VM after `export` unless its first lines say "# Kubernetes only: <why>". A test.sh runs on k3d
+# only, after the hurl test: for what a hurl file cannot do, like keeping two sessions apart.
 k8s_only() { head -3 "$1" | grep -q '^# Kubernetes only:'; }
 k8s_only_reason() { head -3 "$1" | sed -n 's/^# Kubernetes only: //p'; }
-k3d_tests() { for d in "$@"; do if [ -f "$d/test.hurl" ] && [ ! -f "$d/file-provider.yaml" ]; then echo "$d/test.hurl"; fi; done; }
-vm_own_tests() { for d in "$@"; do if [ -f "$d/test.hurl" ] && [ -f "$d/file-provider.yaml" ]; then echo "$d/test.hurl"; fi; done; }
 
 # --- Sanity check: k3d's config on the VM -------------------------------------------------------------------------
 vm_exported() { vm_sudo test -f /etc/traefik/dynamic/exported.yaml; }   # is the VM running `export`'s config?
@@ -238,35 +237,45 @@ smoke() {   # an up check for every shared service (the traffic generator needs 
   return $status
 }
 
-test_all() {   # hurl retries for up to 20s, so this can run straight after `sync`
+run_hurl() {   # <label> <port> <tls port> <files...>: hurl retries for up to 20s, so this can run straight after `sync`
+  label=$1 port=$2 tls=$3; shift 3
+  echo "-- $label"
+  hurl --test --retry 20 --retry-interval 1000 --cacert certs/ca.pem \
+    --variable base_url="http://localhost:$port" --variable tls_port="$tls" "$@"
+}
+
+run_chapter() {   # <chapter dir>: what the chapter proves, now that it is the newest one on
+  d=$1; rc=0   # (called with a different variable than the caller's loop: sh has no local variables)
+  echo; echo "== $d"
+  if [ -f "$d/test.hurl" ]; then
+    if [ -f "$d/file-provider.yaml" ]; then run_hurl "VM (localhost:$VM_HTTP)" $VM_HTTP "" "$d/test.hurl" || rc=1
+    else
+      run_hurl "k3d (localhost:$K3D_HTTP, HTTPS on $K3D_HTTPS)" $K3D_HTTP $K3D_HTTPS "$d/test.hurl" || rc=1
+      if ! k8s_only "$d/test.hurl" && vm_exported; then run_hurl "VM, exported config" $VM_HTTP "" "$d/test.hurl" || rc=1; fi
+    fi
+  fi
+  if [ -f "$d/test.sh" ]; then kube; sh "$d/test.sh" || rc=1; fi
+  return $rc
+}
+
+# No arguments: the chapters are turned on one at a time, and each is tested while it is the newest one on, because a chapter can
+# change what an earlier one showed (07 gives Partner A the access that 06 shows denied). Named files: just those, at the level now.
+test_all() {
   status=0
   smoke || status=1
   echo "== shared/opa"
   docker run --rm -v "$PWD/shared/opa:/policies:ro" openpolicyagent/opa:1.21.2 test /policies || status=1
   need_ca
-  chapters=$(enabled_chapters)
-  [ -n "$chapters" ] || { echo "No chapter is on: ./demo.sh chapter 1"; return 1; }
-  if [ $# -gt 0 ]; then k8s_files="$*"; vm_files=$(for f in "$@"; do k8s_only "$f" || echo "$f"; done)
-  else
-    k8s_files=$(k3d_tests $chapters)
-    vm_files=$(vm_own_tests $chapters)   # the VM's own chapters, and after `export` every test that can run there
-    if vm_exported; then vm_files="$vm_files $(for f in $k8s_files; do k8s_only "$f" || echo "$f"; done)"; fi
+  if [ $# -gt 0 ]; then
+    run_hurl "k3d" $K3D_HTTP $K3D_HTTPS "$@" || status=1
+    portable=$(for f in "$@"; do k8s_only "$f" || echo "$f"; done)
+    [ -z "$portable" ] || run_hurl "VM" $VM_HTTP "" $portable || status=1
+    return $status
   fi
-  for target in k3d vm; do   # HTTPS (ACME) is on k3d only
-    if [ $target = k3d ]; then files=$k8s_files; port=$K3D_HTTP; tls=$K3D_HTTPS; label="k3d (localhost:$port, HTTPS on $tls)"
-    else files=$vm_files; port=$VM_HTTP; tls=; label="VM (localhost:$port)"; vm_exported && label="$label, exported config"; fi
-    [ -n "$(echo $files)" ] || { echo "== $label: no tests"; continue; }
-    echo "== $label"
-    hurl --test --retry 20 --retry-interval 1000 --cacert certs/ca.pem \
-      --variable base_url="http://localhost:$port" --variable tls_port="$tls" $files || status=1
+  for chap in chapters/[0-9][0-9]-*; do   # not `d`: chapter_up loops with it too, and sh has no local variables
+    chapter_up "$(chapter_num "$chap")"
+    run_chapter "$chap" || status=1
   done
-  if [ $# -eq 0 ]; then   # the scripts, unless you named hurl files
-    kube
-    for d in $chapters; do
-      [ -f "$d/test.sh" ] || continue
-      echo "== $d/test.sh"; sh "$d/test.sh" || status=1
-    done
-  fi
   return $status
 }
 
@@ -292,6 +301,6 @@ case $1 in
   smoke) smoke ;;
   test)  shift; test_all "$@" ;;
   clean) clean ;;
-  rebuild) clean; git_up; shared_up; k8s_up; vm_up; chapter_up all; test_all; export_vm ;;
+  rebuild) clean; git_up; shared_up; k8s_up; vm_up; test_all; export_vm ;;
   *)     sed -n '2,13p' "$0"; exit 1 ;;
 esac
