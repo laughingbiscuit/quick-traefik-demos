@@ -2,7 +2,7 @@
 # Every client signs in with the OAuth2 client credentials grant. Their tokens are equally broad: the same scope, and
 # both APIs in the audience. Only the gateway tells them apart.
 
-POST http://localhost:8180/realms/partners/protocol/openid-connect/token
+POST http://localhost:8180/realms/demo/protocol/openid-connect/token
 [BasicAuth]
 partner-a: Password123
 [Form]
@@ -15,7 +15,7 @@ jsonpath "$.access_token" split "." nth 1 base64UrlSafeDecode charsetDecode "utf
 jsonpath "$.access_token" split "." nth 1 base64UrlSafeDecode charsetDecode "utf-8" jsonpath "$.aud" count == 2
 jsonpath "$.access_token" split "." nth 1 base64UrlSafeDecode charsetDecode "utf-8" jsonpath "$.azp" == "partner-a"
 
-POST http://localhost:8180/realms/partners/protocol/openid-connect/token
+POST http://localhost:8180/realms/demo/protocol/openid-connect/token
 [BasicAuth]
 partner-b: Password123
 [Form]
@@ -27,7 +27,7 @@ partner_b: jsonpath "$.access_token"
 jsonpath "$.access_token" split "." nth 1 base64UrlSafeDecode charsetDecode "utf-8" jsonpath "$.scope" == "all-services"
 jsonpath "$.access_token" split "." nth 1 base64UrlSafeDecode charsetDecode "utf-8" jsonpath "$.aud" count == 2
 
-POST http://localhost:8180/realms/partners/protocol/openid-connect/token
+POST http://localhost:8180/realms/demo/protocol/openid-connect/token
 [BasicAuth]
 internal: Password123
 [Form]
@@ -95,7 +95,7 @@ Authorization: Bearer {{other_issuer}}
 HTTP 401
 
 # A valid token for a client the gateway has never been told about: who it is is not enough, it needs a subscription
-POST http://localhost:8180/realms/partners/protocol/openid-connect/token
+POST http://localhost:8180/realms/demo/protocol/openid-connect/token
 [BasicAuth]
 partner-short-lived: Password123
 [Form]

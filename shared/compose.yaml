@@ -39,7 +39,7 @@ services:
       interval: 2s
     restart: unless-stopped
 
-  keycloak:   # realms "demo" and "partners" are imported on start: see keycloak/*-realm.json
+  keycloak:   # realm "demo" is imported on start: see keycloak/demo-realm.json
     image: quay.io/keycloak/keycloak:26.8.1
     # HTTPS with a self-signed certificate, made on every start (so no key sits in Git): Traefik Hub only fetches the
     # JWKS of a token issuer over HTTPS. Lab-only: clients must skip verification (see chapters/04-api-management)
@@ -64,7 +64,6 @@ services:
       - "8543:8443"   # HTTPS, with the self-signed certificate dev mode makes: Traefik Hub only fetches JWKS over HTTPS
     volumes:
       - ./keycloak/demo-realm.json:/opt/keycloak/data/import/demo-realm.json:ro
-      - ./keycloak/partners-realm.json:/opt/keycloak/data/import/partners-realm.json:ro
     restart: unless-stopped
 
   step-ca:   # PKI and ACME: root and intermediate CA are created on first start, in the volume

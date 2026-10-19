@@ -1,0 +1,19 @@
+# The same token check as for machines: signed by the demo realm, issued by it. Here the claim "azp" names the
+# application the person used (demo-app), and the person is passed on as a header for the backend.
+apiVersion: hub.traefik.io/v1alpha1
+kind: APIAuth
+metadata:
+  name: users-jwt
+  namespace: demo
+spec:
+  isDefault: false
+  jwt:
+    appIdClaim: azp
+    trustedIssuers:
+      - issuer: http://localhost:8180/realms/demo
+        jwksUrl: https://host.k3d.internal:8543/realms/demo/protocol/openid-connect/certs   # Hub fetches keys over HTTPS only
+    forwardHeaders:
+      X-User: preferred_username   # the backend gets who signed in from the token, not from the caller
+    clientConfig:
+      tls:
+        insecureSkipVerify: true   # lab only: Keycloak's certificate here is self-signed

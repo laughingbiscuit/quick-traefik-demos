@@ -1,0 +1,44 @@
+# Two backends, Catalog and Admin. whoami echoes what it receives, so a test can see what the gateway forwarded.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: catalog, namespace: demo}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: catalog}}
+  template:
+    metadata: {labels: {app: catalog}}
+    spec:
+      containers:
+        - name: whoami
+          image: traefik/whoami:v1.10
+          args: ["--name", "catalog-api"]
+          ports: [{containerPort: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: catalog, namespace: demo}
+spec:
+  selector: {app: catalog}
+  ports: [{port: 80}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: admin, namespace: demo}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: admin}}
+  template:
+    metadata: {labels: {app: admin}}
+    spec:
+      containers:
+        - name: whoami
+          image: traefik/whoami:v1.10
+          args: ["--name", "admin-api"]
+          ports: [{containerPort: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: admin, namespace: demo}
+spec:
+  selector: {app: admin}
+  ports: [{port: 80}]

@@ -1,0 +1,9 @@
+# API management for people: users sign in at Keycloak and call APIs with their token. The application is one; what a
+# person may call depends on the claims in their token.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - backends.yaml
+  - api-auth.yaml
+  - apis.yaml
+  - subscriptions.yaml

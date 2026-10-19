@@ -8,7 +8,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 grant=$here/grant-partner-a-payments.yaml
 
 TOKEN=$(curl -s -u partner-a:Password123 -d grant_type=client_credentials \
-  http://localhost:8180/realms/partners/protocol/openid-connect/token | jq -r .access_token)
+  http://localhost:8180/realms/demo/protocol/openid-connect/token | jq -r .access_token)
 call() { curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "${BASE_URL:-http://localhost:8080}/payments"; }
 
 # <status> <seconds>: keep asking until Payments answers with the status, or give up

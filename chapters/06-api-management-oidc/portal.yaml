@@ -1,0 +1,57 @@
+# A web page behind a login the gateway runs: the OpenID Connect authorization code flow with PKCE. Without a session the
+# browser is sent to Keycloak; with one, the page gets the person's access token as a bearer token, plus who they are.
+# whoami echoes what it receives. The API checks (profile-api.yaml) cannot sit on this route: they run before the login.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: portal, namespace: demo}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: portal}}
+  template:
+    metadata: {labels: {app: portal}}
+    spec:
+      containers:
+        - name: whoami
+          image: traefik/whoami:v1.10
+          args: ["--name", "portal"]
+          ports: [{containerPort: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: portal, namespace: demo}
+spec:
+  selector: {app: portal}
+  ports: [{port: 80}]
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata: {name: portal, namespace: demo}
+spec:
+  entryPoints: [web]
+  routes:
+    - match: PathPrefix(`/portal`) || PathPrefix(`/oidc/callback`)   # the callback is where Keycloak sends the browser back
+      kind: Rule
+      middlewares: [{name: oidc-login}]
+      services: [{name: portal, port: 80}]
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata: {name: oidc-login, namespace: demo}
+spec:
+  plugin:
+    oidc:
+      issuer: http://host.k3d.internal:8180/realms/demo   # how the gateway reaches Keycloak: through the host
+      trustedIssuer: http://localhost:8180/realms/demo    # what Keycloak puts in tokens, and where the browser goes
+      clientID: urn:k8s:secret:oidc-client:clientID
+      clientSecret: urn:k8s:secret:oidc-client:clientSecret
+      redirectUrl: /oidc/callback
+      pkce: true
+      forwardHeaders:
+        X-User: preferred_username
+---
+apiVersion: v1
+kind: Secret
+metadata: {name: oidc-client, namespace: demo}
+stringData:   # the "traefik" client in Keycloak. Lab-only: a real secret never goes in Git
+  clientID: traefik
+  clientSecret: Password123
