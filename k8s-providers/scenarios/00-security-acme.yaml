@@ -1,7 +1,10 @@
-# Traefik gets its own certificate for whoami.acme.test from step-ca over ACME, and renews it by itself.
+# Traefik gets its own certificate for api.traefik-hub.test from step-ca over ACME, and renews it by itself.
 # The resolver "step" is install config: k8s-providers/stack/00-traefik-hub.yaml. step-ca validates on this
-# cluster's :80. The name sits outside the wildcard (*.demo.test) on purpose: Traefik skips ACME for
-# any name a certificate it already has covers. The VM can't run this: only one gateway can own :80 and :443.
+# cluster's :80. No certificate is pre-issued on purpose: Traefik skips ACME for any name a
+# certificate it already has covers. The VM can't run this: only one gateway can own :80 and :443.
+# Like a real site: :443 serves the app, :80 only redirects to it. step-ca's HTTP-01 check also lands on :80,
+# but Traefik answers /.well-known/acme-challenge/ itself, ahead of the redirect below.
+# Until the CA has issued the certificate, a TLS client is refused (see the TLSOption at the end), not given Traefik's self-signed one.
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -10,10 +13,47 @@ metadata:
 spec:
   entryPoints: [websecure]
   routes:
-    - match: Host(`whoami.acme.test`)
+    - match: Host(`api.traefik-hub.test`)
       kind: Rule
       services:
         - name: whoami
           port: 80
   tls:
     certResolver: step
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: whoami-acme-http
+  namespace: demo
+spec:
+  entryPoints: [web]
+  routes:
+    - match: Host(`api.traefik-hub.test`)
+      kind: Rule
+      middlewares:
+        - name: https-redirect
+      services:
+        - name: whoami
+          port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: https-redirect
+  namespace: demo
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+---
+# The option named "default" applies to every router without its own, in any namespace (cluster-wide).
+# sniStrict refuses a TLS handshake for a name Traefik has no certificate for, instead of falling back to
+# its self-signed default certificate: no certificate from the CA yet means no HTTPS, never a fake one.
+apiVersion: traefik.io/v1alpha1
+kind: TLSOption
+metadata:
+  name: default
+  namespace: demo
+spec:
+  sniStrict: true

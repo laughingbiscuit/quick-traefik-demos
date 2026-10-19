@@ -1,6 +1,6 @@
 #!/bin/sh
 # One entry point for both demos:
-#   ./demo.sh up      Gitea and the shared services, then the k8s demo (:8080, TLS :8443) and the VM demo (:8000, TLS :8444, dashboard :8001)
+#   ./demo.sh up      Gitea and the shared services, then the k8s demo (:8080, HTTPS :8443) and the VM demo (:8000, dashboard :8001)
 #   ./demo.sh sync    push this working tree to Gitea: both demos pick it up within ~20s
 #   ./demo.sh test    run tests/*.hurl (or the files you name) against both demos, plus the shared services' smoke tests
 #   ./demo.sh smoke   just the smoke tests of the shared services
@@ -11,7 +11,8 @@
 set -e
 cd "$(dirname "$0")"
 [ -f .env ] && . ./.env
-SHARED="docker compose -p shared -f shared/compose.yaml"
+if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE=docker-compose; fi   # Homebrew's docker has no plugin
+SHARED="$COMPOSE -p shared -f shared/compose.yaml"
 GITEA=http://demo:Password123@localhost:3000/demo/gitops.git
 
 wait_for() {   # <seconds> <url> <hint>: poll until the URL answers, or give up
@@ -22,20 +23,12 @@ wait_for() {   # <seconds> <url> <hint>: poll until the URL answers, or give up
   done
 }
 
-issue_cert() {   # a *.test certificate from step-ca for both websecure entrypoints, kept in certs/ (valid 24h)
-  # curl refuses a wildcard with one dot, so *.demo.test is in there too: whoami.demo.test works everywhere
+fetch_ca() {   # step-ca's root certificate into certs/: what Traefik and your client trust. No certificate is issued here, Traefik asks for its own over ACME
   mkdir -p certs
-  ca="$SHARED exec -T step-ca"
-  $ca step ca certificate '*.test' /tmp/tls.crt /tmp/tls.key --san demo.test --san '*.demo.test' \
-    --provisioner admin --provisioner-password-file /home/step/secrets/password --force > /dev/null
-  $ca cat /tmp/tls.crt > certs/tls.crt
-  $ca cat /tmp/tls.key > certs/tls.key
-  $ca cat /home/step/certs/root_ca.crt > certs/ca.pem
-  chmod 600 certs/tls.key
-  openssl verify -CAfile certs/ca.pem -untrusted certs/tls.crt certs/tls.crt > /dev/null
+  $SHARED exec -T step-ca cat /home/step/certs/root_ca.crt > certs/ca.pem
 }
 
-need_cert() { [ -f certs/tls.crt ] || { echo "No certs/tls.crt: run ./demo.sh shared first"; exit 1; }; }
+need_ca() { [ -f certs/ca.pem ] || { echo "No certs/ca.pem: run ./demo.sh shared first"; exit 1; }; }
 
 need_token() { : "${HUB_TOKEN:?set HUB_TOKEN in .env (copy .env.example)}"; }
 
@@ -68,12 +61,12 @@ shared_up() {   # everything in shared/compose.yaml: Gitea is already up from `g
   wait_for 120 http://localhost:3001/api/health "$SHARED logs lgtm"
   wait_for 120 http://localhost:8180/realms/demo "$SHARED logs keycloak"
   wait_for 120 https://localhost:9000/health "$SHARED logs step-ca"
-  issue_cert
+  fetch_ca
   echo "Grafana http://localhost:3001  Keycloak http://localhost:8180  Vault http://localhost:8200  (login for all: demo / Password123)  step-ca https://localhost:9000"
 }
 
 k8s_up() {   # k3d cluster, Flux, and Traefik Hub installed by Flux from k8s-providers/stack
-  need_token; need_cert
+  need_token; need_ca
   set -x
   repo=http://host.k3d.internal:3000/demo/gitops.git
   # :8080 and :8443 are yours; the cluster owns the host's :80 and :443 too, because ACME validation only connects there
@@ -87,7 +80,6 @@ k8s_up() {   # k3d cluster, Flux, and Traefik Hub installed by Flux from k8s-pro
   set +x   # keep the token off screen
   kubectl -n traefik create secret generic traefik-hub-license --from-literal=token="$HUB_TOKEN"
   set -x
-  kubectl -n traefik create secret tls wildcard-test --cert=certs/tls.crt --key=certs/tls.key
   kubectl -n traefik create secret generic step-ca-root --from-file=ca.pem=certs/ca.pem   # for ACME against step-ca
   flux create source git gitops --url=$repo --branch=main --secret-ref=gitea-auth --interval=10s
   # Two Kustomizations: the scenarios use Traefik's CRDs, which only exist once the stack is installed
@@ -98,12 +90,11 @@ k8s_up() {   # k3d cluster, Flux, and Traefik Hub installed by Flux from k8s-pro
 }
 
 vm_up() {   # Lima VM running file-provider/vm-provision.sh (any Linux VM works the same way)
-  need_token; need_cert
+  need_token
   set -x
   limactl start --name=fp-demo --tty=false --set ".disk=\"20GiB\"" template:default
   set +x   # keep the token off screen
   limactl shell fp-demo sudo HUB_TOKEN="$HUB_TOKEN" \
-    TLS_CERT="$(base64 < certs/tls.crt | tr -d '\n')" TLS_KEY="$(base64 < certs/tls.key | tr -d '\n')" \
     GITOPS_REPO=http://demo:Password123@host.lima.internal:3000/demo/gitops.git sh -s < file-provider/vm-provision.sh
   wait_for 300 http://localhost:8001/ping "limactl shell fp-demo sudo journalctl -u traefik"
   echo "Dashboard: http://localhost:8001/dashboard/"
@@ -128,15 +119,16 @@ test_all() {   # hurl retries for up to 20s, so this can run straight after `syn
   smoke || status=1
   echo "== shared/opa"
   docker run --rm -v "$PWD/shared/opa:/policies:ro" openpolicyagent/opa:1.21.2 test /policies || status=1
-  need_cert
-  for target in k8s-providers=8080:8443 file-provider=8000:8444; do
+  need_ca
+  for target in k8s-providers=8080:8443 file-provider=8000:; do   # HTTPS (ACME) is on Kubernetes only
     ports=${target#*=}
     if [ $# -gt 0 ]; then files="$*"   # tests named *.k8s.hurl are for Kubernetes only
     elif [ "${target%=*}" = k8s-providers ]; then files=$(ls tests/*.hurl)
     else files=$(ls tests/*.hurl | grep -v '\.k8s\.hurl$'); fi
-    echo "== ${target%=*} (localhost:${ports%:*}, TLS on ${ports#*:})"
+    tls=${ports#*:}
+    echo "== ${target%=*} (localhost:${ports%:*}${tls:+, HTTPS on $tls})"
     hurl --test --retry 20 --retry-interval 1000 --cacert certs/ca.pem \
-      --variable base_url="http://localhost:${ports%:*}" --variable tls_port="${ports#*:}" $files || status=1
+      --variable base_url="http://localhost:${ports%:*}" --variable tls_port="$tls" $files || status=1
   done
   return $status
 }
