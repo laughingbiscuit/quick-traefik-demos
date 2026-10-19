@@ -1,8 +1,0 @@
-# Dashboard router on the "traefik" entrypoint: http://localhost:8001/dashboard/
-# Dynamic like the scenarios, but always on (gitops-sync copies it every run).
-http:
-  routers:
-    dashboard:
-      rule: PathPrefix(`/api`) || PathPrefix(`/dashboard`)
-      entryPoints: [traefik]
-      service: api@internal

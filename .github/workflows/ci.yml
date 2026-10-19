@@ -1,4 +1,4 @@
-# Build both demos, enable every scenario, test them all.
+# Build both demos, turn every chapter on, test them all, then export k3d's config to the VM and test that too.
 # Needs a HUB_TOKEN repository secret (an online Traefik Hub gateway token).
 name: ci
 
@@ -31,23 +31,24 @@ jobs:
       - name: Shared services
         run: ./demo.sh shared
 
-      - name: k8s-providers demo (k3d + Flux)
+      - name: k3d demo (Flux)
         run: ./demo.sh k8s
 
       # No Lima here: the runner is the VM
-      - name: file-provider demo
+      - name: VM demo
         run: |
-          sudo HUB_TOKEN="$HUB_TOKEN" GITOPS_REPO=http://demo:Password123@localhost:3000/demo/gitops.git sh file-provider/vm-provision.sh
+          sudo HUB_TOKEN="$HUB_TOKEN" GITOPS_REPO=http://demo:Password123@localhost:3000/demo/gitops.git sh platform/vm/vm-provision.sh
           timeout 300 sh -c 'until curl -sf http://localhost:8001/ping; do sleep 2; done'
 
-      - name: Enable every scenario
-        run: |
-          sed -i 's/^# \([0-9]\)/\1/' file-provider/scenarios/enabled.txt
-          sed -i 's/^# - /  - /' k8s-providers/scenarios/kustomization.yaml
-          ./demo.sh sync
+      - name: Turn every chapter on
+        run: ./demo.sh chapter all
 
+      # VM_LOCAL=1: the runner is the VM, so the VM steps use sudo instead of Lima
       - name: Test both demos
-        run: ./demo.sh test
+        run: VM_LOCAL=1 ./demo.sh test
+
+      - name: Export k3d's config to the VM and test it there
+        run: VM_LOCAL=1 ./demo.sh export
 
       - name: Diagnostics
         if: failure()

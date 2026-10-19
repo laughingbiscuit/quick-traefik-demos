@@ -6,6 +6,6 @@ VM=${VM_GATEWAY:-http://host.docker.internal:8000}
 
 while :; do
   if [ "$(awk 'BEGIN { srand(); print int(rand() * 100) }')" -lt "${K8S_WEIGHT:-50}" ]; then gw=$K8S; else gw=$VM; fi
-  curl -s -o /dev/null -w "%{http_code} $gw${URL_PATH:-/passthrough}\n" "$gw${URL_PATH:-/passthrough}" || true
+  curl -s -o /dev/null -w "%{http_code} $gw${URL_PATH:-/passthrough?route=file}\n" "$gw${URL_PATH:-/passthrough?route=file}" || true
   sleep "${INTERVAL:-1}"
 done

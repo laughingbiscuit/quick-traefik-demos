@@ -48,20 +48,21 @@ cat > /usr/local/bin/gitops-sync <<'EOF'
 #!/bin/sh
 set -e
 REPO=/opt/gitops/repo
-DEMO=$REPO/file-provider
-SCENARIOS=$DEMO/scenarios
+PLATFORM=$REPO/platform/vm
 TRAEFIK_CONFIG=/etc/traefik/dynamic
 [ -d $REPO ] || git clone -q "$GITOPS_REPO" $REPO
 git -C $REPO fetch -q && git -C $REPO reset -q --hard origin/main
 
-# Dynamic config: the dashboard and the scenarios listed in enabled.txt. Traefik hot-reloads it.
+# Dynamic config: every chapter's hand-written vm/*.yaml (only chapter 1 has one: the
+# rest comes from `./demo.sh export`, which stops this sync). Traefik hot-reloads it.
 rm -rf /tmp/enabled && mkdir -m 755 /tmp/enabled
-cp $DEMO/dashboard.yaml /tmp/enabled/
-grep -vE '^[[:space:]]*(#|$)' $SCENARIOS/enabled.txt | (cd $SCENARIOS && xargs -r cp -t /tmp/enabled)
+for f in $REPO/chapters/*/vm/*.yaml; do
+  [ -e "$f" ] && cp "$f" "/tmp/enabled/$(basename "$(dirname "$(dirname "$f")")")-$(basename "$f")"
+done
 mkdir -p $TRAEFIK_CONFIG && rsync -a --delete /tmp/enabled/ $TRAEFIK_CONFIG/
 
 # Static config: only rewrite it when it differs, or the path unit would restart Traefik on every run.
-cmp -s $DEMO/traefik-static.yaml /etc/traefik/traefik-static.yaml || install -m 644 $DEMO/traefik-static.yaml /etc/traefik/traefik-static.yaml
+cmp -s $PLATFORM/traefik-static.yaml /etc/traefik/traefik-static.yaml || install -m 644 $PLATFORM/traefik-static.yaml /etc/traefik/traefik-static.yaml
 EOF
 chmod 755 /usr/local/bin/gitops-sync
 

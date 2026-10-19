@@ -1,0 +1,7 @@
+# Chapter 1: one request through Entrypoint, Router, Middleware, Service, written three ways.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ingress.yaml
+  - ingressroute.yaml
+  - httproute.yaml

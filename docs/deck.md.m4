@@ -11,7 +11,7 @@ date: m4_esyscmd([[[date +%d/%m/%y]]])
 
 # Introduction
 
-Traefik provides a self-configuring layer to route, secure and observe 
+Traefik provides a self-configuring layer to route, secure and observe
   traffic across VMs, K8s, APIs, MCP and LLMs in a single binary
 
 ---
@@ -24,19 +24,19 @@ TL;DR:
 - VM with Lima
 - GitOps with Gitea + Flux
 - Testing with curl, hurl and hey
-- Redis, Keycloak, OPA and Toxiproxy also available 
+- Redis, Keycloak, OPA and Toxiproxy also available
 
 You can verify the test results and try yourself with this [repo](https://github.com/laughingbiscuit/quick-traefik-demos)
 
 ---
 
-# Installing Traefik 
+# Installing Traefik
 
 One binary that runs on:
 
 - Kubernetes via Helm
 - Docker / Docker Compose
-- Hashicorp Nomad 
+- Hashicorp Nomad
 - Linux under systemd (connected or fully air-gapped)
 - Cloud marketplaces
 - Also available as a FIPS 140-3 Hardened Image
@@ -45,131 +45,103 @@ This demo uses Flux/Helm for Kubernetes and the binary in systemd on VM
 
 ---
 
-# Hands on - Passthrough
+# Chapter 1 - Passthrough
 
-Every request passes through 4 stages: 
+Every request passes through 4 stages:
 
 `Entrypoint -> Router -> Middleware -> Service`
 
 ---
 
-__Entrypoint__ 
+__Entrypoint__
 
 - listener bound to a port and a protocol (TCP, UDP, HTTP, HTTP/2, HTTP/3)
 - configured on installation
 
-__Router__ 
+__Router__
 
 - matches the request against a rule such as Host() or PathPrefix() and selects what happens next
-- supports vanilla Kubernetes Ingress, Traefik IngressRoute, Gateway API HTTPRoute and file-based configuration
 
-__Middleware__ 
+__Middleware__
 
-- an ordered chain of transformations and policies to protect and manage your APIs, Models and MCP tools 
+- an ordered chain of transformations and policies to protect and manage your APIs, Models and MCP tools
 
-__Service__ 
+__Service__
 
-- the load-balanced pool of backend instances that receives the request 
+- the load-balanced pool of backend instances that receives the request
 - supports external endpoints
 
 ---
 
-## Kubernetes Entrypoint
+## A router, a middleware and a service
 
 ```
-# k8s-providers/stack/00-traefik-hub.yaml
-
-m4_esyscmd([[[yq 'select(.kind == "HelmRelease") | .spec.values | {"ports": .ports, "gateway": .gateway}' k8s-providers/stack/00-traefik-hub.yaml]]])
+m4_esyscmd([[[sed 's/^---$//' chapters/01-passthrough/k8s/ingressroute.yaml]]])
 ```
 
 ---
 
-## Kubernetes Route Options - Ingress
+## Three ways to write a route on Kubernetes
 
-```
-# k8s-providers/scenarios/00-passthrough-ingress.yaml
+- __Ingress__ - the Kubernetes standard. Traefik settings go in annotations, checked only at runtime
+- __IngressRoute__ - Traefik's own object. Every Traefik feature, validated when you deploy
+- __HTTPRoute__ - the Gateway API, the standard's successor to Ingress
 
-m4_esyscmd([[[sed '/^---$/,$d' k8s-providers/scenarios/00-passthrough-ingress.yaml]]])
-```
-
-Annotations are validated at runtime :-(
+Same job, three ways of writing it
 
 ---
 
-## Kubernetes Route Options - IngressRoute
+## One Traefik, many providers
 
-```
-# k8s-providers/scenarios/00-passthrough-ingressroute.yaml
+Each provider watches its own source of truth and translates it into Traefik's dynamic configuration
 
-m4_esyscmd([[[sed '/^---$/,$d' k8s-providers/scenarios/00-passthrough-ingressroute.yaml]]])
-```
+Kubernetes Ingress, Kubernetes CRD, Gateway API, Docker, Swarm, Consul, Nomad, ECS, Redis, etcd, file...
 
----
+They run __at the same time__ in one instance, and every object carries its provider's name, so nothing collides:
 
-## Kubernetes Route Options - HTTPRoute
-
-```
-# k8s-providers/scenarios/00-passthrough-httproute.yaml
-
-m4_esyscmd([[[sed '/^---$/,$d' k8s-providers/scenarios/00-passthrough-httproute.yaml]]])
-```
-
-Annotations are validated at deploy time :-)
+`whoami@kubernetes`  `whoami@kubernetescrd`  `whoami@kubernetesgateway`  `whoami@file`
 
 ---
 
-## Middleware and Service
+## The file provider
 
-Here is an example of a simple middleware:
-
-```
-# k8s-providers/scenarios/00-passthrough-ingress.yaml
-
-m4_esyscmd([[[sed '1,/^---$/d' k8s-providers/scenarios/00-passthrough-ingress.yaml]]])
-```
-
-and the corresponding Service:
+The same route, as a file. No Kubernetes needed
 
 ```
-# k8s-providers/stack/01-whoami.yaml
-
-m4_esyscmd([[[sed '1,/^---$/d' k8s-providers/stack/01-whoami.yaml]]])
+m4_include([[[chapters/01-passthrough/vm/passthrough.yaml]]])
 ```
 
 ---
 
-## File Provider Entrypoint, Route, Middleware, Service
+## One request, four providers
 
 ```
-# file-provider/traefik-static.yaml
+$ curl -si localhost:8080/passthrough
+X-Demo-Route: ingress
 
-m4_esyscmd([[[yq '.entryPoints' file-provider/traefik-static.yaml]]])
+$ curl -si 'localhost:8080/passthrough?route=ingressroute'
+X-Demo-Route: ingressroute
+
+$ curl -si 'localhost:8080/passthrough?route=httproute'
+X-Demo-Route: httproute
+
+$ curl -si 'localhost:8080/passthrough?route=file'
+X-Demo-Route: file
 ```
 
-```
-# file-provider/scenarios/00-passthrough.yaml
-
-m4_include([[[file-provider/scenarios/00-passthrough.yaml]]])
-```
+Four providers, one Traefik. The header tells you which route answered
 
 ---
 
-## Result
+## One dashboard
 
-We have successfully proxied a request through our Traefik Hub!
+Every route of every provider, in one list, each named `route@provider`
 
-```
-$ curl -I traefik.test:8080/passthrough
-HTTP/1.1 200 OK
-Content-Length: 396
-Content-Type: text/plain; charset=utf-8
-Date: Fri, 16 Oct 2026 13:46:34 GMT
-X-Route: ingress
-```
+Open `http://localhost:8082/dashboard/`
 
 ---
 
-# Hands on - Security: ACME
+# Chapter 2 - Proxy: TLS from ACME
 
 ACME (RFC 8555) lets software get a certificate from a CA with no human in the loop
 
@@ -195,32 +167,6 @@ Three parties:
 
 ---
 
-## ACME - what you configure (install)
-
-```
-# k8s-providers/stack/00-traefik-hub.yaml
-
-m4_esyscmd([[[yq 'select(.kind == "HelmRelease") | .spec.values | {"certificatesResolvers": .certificatesResolvers}' k8s-providers/stack/00-traefik-hub.yaml]]])
-```
-
-The resolver is a named recipe. Point `caServer` at another CA to change it
-
-`storage` holds the account key and certificates. Keep it on a persistent volume: after a restart Traefik reuses the account and certificates. Lose it and Traefik registers and orders again (here, a new pod does)
-
----
-
-## ACME - what you configure (route)
-
-```
-# k8s-providers/scenarios/00-security-acme.yaml
-
-m4_esyscmd([[[yq 'select(.metadata.name == "whoami-acme") | .spec' k8s-providers/scenarios/00-security-acme.yaml]]])
-```
-
-One line, `certResolver: step`, is the trigger. No Certificate object, no Secret, no cert-manager
-
----
-
 ## ACME - the HTTP-01 challenge
 
 ```
@@ -243,19 +189,96 @@ One line, `certResolver: step`, is the trigger. No Certificate object, no Secret
 
 Proof of control = being the one who answers on port 80 for that name
 
-The token is served only while the challenge is pending, then dropped. But `:80` must be reachable at every renewal
+---
+
+## ACME - what you configure
+
+```
+certificatesResolvers:            # static: the install
+  step:
+    acme:
+      email: demo@example.com
+      caServer: https://<your CA>/acme/directory
+      storage: /data/acme.json
+      httpChallenge:
+        entryPoint: web
+
+tls:                              # dynamic: on the route
+  certResolver: step
+```
+
+One line on the route is the trigger. No Certificate object, no Secret, no cert-manager
 
 ---
 
-## ACME - renewal and the HTTP redirect
+## ACME - restarts, renewal and the first request
 
-```
-# k8s-providers/scenarios/00-security-acme.yaml
-
-m4_esyscmd([[[yq 'select(.metadata.name == "whoami-acme-http" or .kind == "Middleware") | .spec' k8s-providers/scenarios/00-security-acme.yaml]]])
-```
-
-- `:80` redirects to HTTPS, as on a real site. Traefik still answers the challenge first
+- `storage` holds the account and the certificates. On a persistent volume, a restart reuses them. Lose it and Traefik registers and orders again
+- Traefik renews before expiry by itself (here: 24h certificates, renewed in the last 6h)
+- The challenge token is served only while the challenge is pending, but `:80` must be reachable at every renewal
 - Until the CA has issued the certificate, `sniStrict: true` refuses the handshake instead of serving Traefik's self-signed one
-- Certificates last 24h here, so Traefik renews in the last 6h, checking every 10 minutes
-- Try it: `curl --cacert certs/ca.pem https://api.traefik-hub.test/`
+
+---
+
+# Chapter 3 - API gateway: authentication
+
+A middleware in front of the same service
+
+```
+$ curl -i localhost:8080/basic-auth
+HTTP/1.1 401 Unauthorized
+
+$ curl -i -u demo:Password123 localhost:8080/basic-auth
+HTTP/1.1 200 OK
+```
+
+The router matched the path, the middleware checked the login, the service answered
+
+---
+
+# Chapter 5 - Static and dynamic
+
+Everything so far was Kubernetes objects. Traefik had already merged them into one configuration
+
+__Static__ - the install. Read at start, a change restarts Traefik
+
+- entrypoints, providers, certificate resolvers, the licence
+
+__Dynamic__ - what you demo. Hot-reloaded, no restart
+
+- routers, middlewares, services, TLS options
+
+---
+
+## Moving to a VM
+
+Traefik's merged configuration can be written out as a file-provider file, and run on a VM
+
+- only the __dynamic__ part comes across
+- the VM keeps its own static config
+- every route is `@file` there: the original providers are gone
+
+A shortcut for the demo, a snapshot rather than a way to run the VM
+
+---
+
+## What works on the VM
+
+```
+PASS  chapter 1  passthrough: Ingress, IngressRoute, HTTPRoute, file
+PASS  chapter 3  basic auth
+SKIP  chapter 2  TLS from ACME
+```
+
+Routes, middlewares and basic auth came across. TLS and ACME did not
+
+---
+
+## Why ACME did not
+
+The route is dynamic, so it loaded. What it needs is static, so it is disabled:
+
+- the `websecure` entrypoint: the VM only has `web`
+- the `step` certificate resolver: it was part of the Kubernetes install
+
+Know which of your config is static and which is dynamic before you move it

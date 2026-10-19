@@ -11,3 +11,6 @@ _site/
 
 # OS clutter
 .DS_Store
+
+# Generated: ./demo.sh export (can hold secrets read from the cluster)
+/chapters/05-to-the-vm/generated/

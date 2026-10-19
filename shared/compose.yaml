@@ -142,7 +142,7 @@ services:
     entrypoint: ["sh", "/traffic.sh"]
     environment:
       K8S_WEIGHT: ${K8S_WEIGHT:-50}
-      URL_PATH: ${URL_PATH:-/passthrough}
+      URL_PATH: ${URL_PATH:-/passthrough?route=file}   # the one route both gateways answer, k3d's file provider and the VM's file
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
