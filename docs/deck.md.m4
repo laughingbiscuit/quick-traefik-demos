@@ -43,4 +43,4 @@ One binary that runs on:
 
 This demo uses Flux/Helm for Kubernetes and the binary in systemd on VM
 
-m4_esyscmd([[[for c in $SLIDES; do cat chapters/$c/slides.md; done]]])
+m4_esyscmd([[[for c in $SLIDES; do cat chapters/$c/slides.md; printf '\n\n'; done]]])

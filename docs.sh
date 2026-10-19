@@ -28,4 +28,9 @@ export SLIDES
 
 mkdir -p _site
 m4 -P docs/deck.md.m4 > _site/deck.md
+
+# mdp2html reads a --- straight after a line of text as a heading underline, not a slide break: the slides on either
+# side would merge. Every --- needs a blank line before it (code blocks are left alone).
+bad=$(awk '/^[ \t]*```/ { fence = !fence } !fence && $0 == "---" && prev != "" { printf " %d", NR } { prev = $0 }' _site/deck.md)
+[ -z "$bad" ] || { echo "docs.sh: no blank line before --- on line(s)$bad of _site/deck.md: it would not split the slides" >&2; exit 1; }
 mdp2html _site/deck.md > _site/index.html
