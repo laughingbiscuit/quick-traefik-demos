@@ -38,12 +38,8 @@ spec:
       web:
         port: 8000
         exposedPort: 80
-    # websecure keeps the chart defaults (container port 8443, exposed as :443, TLS on). Its default
-    # certificate is the Secret wildcard-test, created by `./demo.sh k8s` so the key never lands in Git.
-    tlsStore:
-      default:
-        defaultCertificate:
-          secretName: wildcard-test
+    # Step 1b - websecure keeps the chart defaults (container port 8443, exposed as :443, TLS on).
+    # There is no pre-issued certificate: every name is served with a certificate Traefik got over ACME.
     # ACME from step-ca: Traefik gets its own certificates and renews them, see 00-security-acme.yaml.
     # step-ca validates on this cluster's :80 (the web entrypoint). Its root CA is the Secret
     # step-ca-root, created by `./demo.sh k8s`. Certificates last 24h, so Traefik renews them in

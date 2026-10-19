@@ -64,7 +64,7 @@ services:
       DOCKER_STEPCA_INIT_PASSWORD: Password123
     extra_hosts:
       # http-01 and tls-alpn-01 are validated on the host's :80 and :443, which the k8s gateway owns
-      - "whoami.acme.test:host-gateway"
+      - "api.traefik-hub.test:host-gateway"
     ports:
       - "9000:9000"
     volumes:
