@@ -2,7 +2,7 @@
 # Plain HTTP only redirects: the app is served on :443.
 GET {{base_url}}/
 Host: api.traefik-hub.test
-HTTP 308
+HTTP 301
 [Asserts]
 header "Location" == "https://api.traefik-hub.test/"
 
