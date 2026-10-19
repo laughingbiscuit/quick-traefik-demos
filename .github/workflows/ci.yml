@@ -23,8 +23,15 @@ jobs:
         run: |
           curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG=v5.9.0 bash
           curl -s https://fluxcd.io/install.sh | sudo FLUX_VERSION=2.9.6 bash
-          curl -sLO https://github.com/Orange-OpenSource/hurl/releases/download/8.0.1/hurl_8.0.1_amd64.deb
-          sudo apt-get install -y ./hurl_8.0.1_amd64.deb
+          # hurl's .deb and tarball need libxml2.so.2, which Ubuntu 26.04 no longer has (libxml2-16 is .so.16): run the
+          # official image, a static musl build, behind a `hurl` command. Host network, and the working directory
+          # at the same path inside, so demo.sh's relative paths and localhost URLs work unchanged
+          sudo tee /usr/local/bin/hurl > /dev/null <<'EOF'
+          #!/bin/sh
+          exec docker run --rm --network host -v "$PWD:$PWD" -w "$PWD" ghcr.io/orange-opensource/hurl:8.0.1 "$@"
+          EOF
+          sudo chmod +x /usr/local/bin/hurl
+          hurl --version
 
       - name: Gitea
         run: ./demo.sh git
