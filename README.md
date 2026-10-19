@@ -87,7 +87,7 @@ Docker Compose runs Gitea and the dependencies the chapters share, on the host (
 | step-ca | `9000` (HTTPS) | PKI and ACME: root and intermediate CA, and the ACME directory at `/acme/acme/directory` that Traefik gets its certificates from (see Gotchas for the challenge ports). Its CA lasts until `clean` | provisioner `admin`, password `Password123` |
 | Vault | `8200` | secrets management: KV at `secret/` | token `Password123` |
 | OPA | none | `shared/opa/authz.rego`: gateways evaluate it themselves, `./demo.sh test` checks it with `opa test` | |
-| Ollama | `11434` | local LLM for the AI Gateway. Pulls `qwen2.5:0.5b`; set `OLLAMA_MODEL` to change it | none |
+| Ollama | `11434` | local LLM for the AI Gateway. No model is pulled yet: a chapter that needs one runs `docker compose -p shared -f shared/compose.yaml exec ollama ollama pull <model>` | none |
 | Toxiproxy | `8474` (API) | latency and failures in front of Redis (`6380`) and the demo API (`9111`, `9112`). Proxies: `shared/toxiproxy/toxiproxy.json` | none |
 | Gitea MCP | `8081` | MCP tools for the Gitea repo and issues, at `POST /mcp`. The caller brings the token: `Authorization: Bearer <Gitea access token>` | none |
 

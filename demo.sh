@@ -74,7 +74,6 @@ fetch_ca() {   # step-ca's root certificate into certs/: what Traefik and your c
 shared_up() {   # everything in shared/compose.yaml: Gitea is already up from `git`, the rest starts here
   set -x
   $SHARED up -d --quiet-pull
-  [ "$(docker wait $($SHARED ps -aq ollama-pull))" = 0 ]   # the model download
   set +x
   wait_for 120 http://localhost:3001/api/health "$SHARED logs lgtm"
   wait_for 120 http://localhost:8180/realms/demo "$SHARED logs keycloak"

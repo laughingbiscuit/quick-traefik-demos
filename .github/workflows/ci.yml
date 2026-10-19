@@ -1,5 +1,6 @@
-# Build both demos, turn every chapter on, test them all, then export k3d's config to the VM and test that too.
-# Needs a HUB_TOKEN repository secret (an online Traefik Hub gateway token).
+# demos: build both demos, turn every chapter on, test them all, export k3d's config to the VM and test that too,
+#        then put the VM back on its own config. Needs a HUB_TOKEN repository secret (an online Traefik Hub gateway token).
+# deck:  build the workshop deck, in full and for one customer. The Pages workflow only runs on main.
 name: ci
 
 on:
@@ -8,7 +9,7 @@ on:
 
 jobs:
   demos:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
       HUB_TOKEN: ${{ secrets.HUB_TOKEN }}
@@ -50,6 +51,11 @@ jobs:
       - name: Export k3d's config to the VM and test it there
         run: VM_LOCAL=1 ./demo.sh export
 
+      - name: Put the VM back on its own config and test it
+        run: |
+          VM_LOCAL=1 ./demo.sh vm-reset
+          VM_LOCAL=1 ./demo.sh test
+
       - name: Diagnostics
         if: failure()
         run: |
@@ -63,3 +69,32 @@ jobs:
           flux get all -A || true
           kubectl get pods -A || true
           kubectl -n traefik logs deploy/traefik --tail=40 || true
+
+  deck:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      # yq is already on GitHub's Ubuntu runners
+      - name: Install m4, pandoc and mdp2html
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq m4 pandoc
+          sudo curl -sfL -o /usr/local/bin/mdp2html https://github.com/laughingbiscuit/mdp2html/releases/download/v0.1/mdp2html.sh
+          sudo chmod +x /usr/local/bin/mdp2html
+
+      - name: Build the full deck
+        run: |
+          ./docs.sh
+          grep -q '^# Passthrough' _site/deck.md
+          # Slides are assembled per customer, so none may say "chapter" or lean on another chapter's slides
+          ! grep -qi 'chapter' _site/deck.md
+
+      - name: Build a deck for one customer, in the order asked for
+        run: |
+          ./docs.sh api-gateway proxy
+          api=$(grep -n '^# API gateway' _site/deck.md | cut -d: -f1)
+          proxy=$(grep -n '^# Proxy' _site/deck.md | cut -d: -f1)
+          test -n "$api" && test -n "$proxy" && test "$api" -lt "$proxy"
+          ! grep -q '^# Passthrough' _site/deck.md
+
