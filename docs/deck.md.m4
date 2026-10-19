@@ -236,9 +236,9 @@ The router matched the path, the middleware checked the login, the service answe
 
 ---
 
-# Chapter 5 - Static and dynamic
+# Static and dynamic config
 
-Everything so far was Kubernetes objects. Traefik had already merged them into one configuration
+Traefik merges every provider into one configuration, and keeps two kinds apart
 
 __Static__ - the install. Read at start, a change restarts Traefik
 
@@ -247,38 +247,3 @@ __Static__ - the install. Read at start, a change restarts Traefik
 __Dynamic__ - what you demo. Hot-reloaded, no restart
 
 - routers, middlewares, services, TLS options
-
----
-
-## Moving to a VM
-
-Traefik's merged configuration can be written out as a file-provider file, and run on a VM
-
-- only the __dynamic__ part comes across
-- the VM keeps its own static config
-- every route is `@file` there: the original providers are gone
-
-A shortcut for the demo, a snapshot rather than a way to run the VM
-
----
-
-## What works on the VM
-
-```
-PASS  chapter 1  passthrough: Ingress, IngressRoute, HTTPRoute, file
-PASS  chapter 3  basic auth
-SKIP  chapter 2  TLS from ACME
-```
-
-Routes, middlewares and basic auth came across. TLS and ACME did not
-
----
-
-## Why ACME did not
-
-The route is dynamic, so it loaded. What it needs is static, so it is disabled:
-
-- the `websecure` entrypoint: the VM only has `web`
-- the `step` certificate resolver: it was part of the Kubernetes install
-
-Know which of your config is static and which is dynamic before you move it
