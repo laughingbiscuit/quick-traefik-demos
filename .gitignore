@@ -9,5 +9,9 @@ _site/
 /index.html
 /store/
 
-# OS clutter
+# Editor and OS clutter
 .DS_Store
+*.swp
+
+# Generated: ./demo.sh export (can hold secrets read from the cluster)
+/platform/vm/generated/

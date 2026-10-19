@@ -1,20 +1,18 @@
 # Static configuration: the only part Traefik reads at start-up. gitops-sync
 # installs it and Traefik restarts when it changes. Everything else (routers,
-# middlewares, services, the dashboard) is dynamic: hot-reloaded from Git, no restart.
+# middlewares, services) is dynamic: hot-reloaded from Git, no restart.
+# There is no dashboard on the VM: the k3d Traefik's is the one to show (platform/k8s/00-traefik-hub.yaml).
 
 entryPoints:
   web:
     address: ":8000"       # demo traffic
   traefik:
-    address: ":8001"       # dashboard and /ping
+    address: ":8001"       # /ping only
 
 providers:
   file:
     directory: /etc/traefik/dynamic
     watch: true
-
-api:
-  dashboard: true          # the router that exposes it is dynamic: dashboard.yaml
 
 ping: {}                   # GET :8001/ping answers OK: the bootstrap's readiness check
 

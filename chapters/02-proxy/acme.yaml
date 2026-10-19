@@ -1,5 +1,5 @@
 # Traefik gets its own certificate for api.traefik-hub.test from step-ca over ACME, and renews it by itself.
-# The resolver "step" is install config: k8s-providers/stack/00-traefik-hub.yaml. step-ca validates on this
+# The resolver "step" is install config: platform/k8s/00-traefik-hub.yaml. step-ca validates on this
 # cluster's :80. No certificate is pre-issued on purpose: Traefik skips ACME for any name a
 # certificate it already has covers. The VM can't run this: only one gateway can own :80 and :443.
 # Like a real site: :443 serves the app, :80 only redirects to it. step-ca's HTTP-01 check also lands on :80,

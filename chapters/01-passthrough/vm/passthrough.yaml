@@ -1,10 +1,10 @@
 http:
   routers:
     whoami:
-      rule: PathPrefix(`/passthrough`)
+      rule: PathPrefix(`/passthrough`) && Query(`route`, `file`)
       entryPoints: [web]
       middlewares: [addHeaders]
-      service: whoami
+      service: whoami-passthrough
   middlewares:
     addHeaders:
       headers:
@@ -12,7 +12,7 @@ http:
           X-Demo-Route: file
 
   services:
-    whoami:
+    whoami-passthrough:
       loadBalancer:
         servers:
           - url: http://localhost:9500

@@ -92,14 +92,6 @@ services:
       interval: 2s
     restart: unless-stopped
 
-  ollama-pull:   # one-shot: downloads the model (set OLLAMA_MODEL to change it)
-    image: ollama/ollama:0.40.5
-    command: ["pull", "${OLLAMA_MODEL:-qwen2.5:0.5b}"]
-    environment:
-      OLLAMA_HOST: ollama:11434
-    depends_on:
-      ollama: {condition: service_healthy}
-
   toxiproxy:   # proxies are listed in toxiproxy/toxiproxy.json; add toxics through the API on :8474
     image: ghcr.io/shopify/toxiproxy:2.13.0
     command: ["-host=0.0.0.0", "-config=/toxiproxy.json"]
@@ -142,7 +134,7 @@ services:
     entrypoint: ["sh", "/traffic.sh"]
     environment:
       K8S_WEIGHT: ${K8S_WEIGHT:-50}
-      URL_PATH: ${URL_PATH:-/passthrough}
+      URL_PATH: ${URL_PATH:-/passthrough?route=file}   # the one route both gateways answer, k3d's file provider and the VM's file
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

@@ -1,20 +1,31 @@
 #!/bin/sh
-# One entry point for both demos:
-#   ./demo.sh up      Gitea and the shared services, then the k8s demo (:8080, HTTPS :8443) and the VM demo (:8000, dashboard :8001)
-#   ./demo.sh sync    push this working tree to Gitea: both demos pick it up within ~20s
-#   ./demo.sh test    run tests/*.hurl (or the files you name) against both demos, plus the shared services' smoke tests
-#   ./demo.sh smoke   just the smoke tests of the shared services
-#   ./demo.sh rebuild clean, up, then test: a from-scratch check that everything works
-#   ./demo.sh clean   delete everything the demos created (your changes stay in this repo)
-#   ./demo.sh rebuild clean, up, sync and test in one
+# One entry point for the whole workshop (chapters/ has the content, platform/ the installs):
+#   ./demo.sh up        Gitea and the shared services, then k3d (:8080, HTTPS :8443, dashboard :8082) and the VM (:8000, no dashboard), on chapter 1
+#   ./demo.sh chapter N turn chapters 1..N on in k3d (`all` for every one), and the later ones off
+#   ./demo.sh sync      push this working tree to Gitea: k3d and the VM pick it up within ~20s
+#   ./demo.sh export    sanity check: turn what k3d runs into file-provider YAML, run that on the VM, and show what works there
+#   ./demo.sh vm-reset  undo `export`: the VM goes back to its own hand-written config
+#   ./demo.sh test      run the tests of the enabled chapters (or the files you name), plus the shared services' smoke tests
+#   ./demo.sh smoke     just the smoke tests of the shared services
+#   ./demo.sh clean     delete everything the demos created (your changes stay in this repo)
+#   ./demo.sh rebuild   clean, up, every chapter, test and export in one: a from-scratch check that everything works
 # `up` runs the steps `git`, `shared`, `k8s` and `vm`, which you can also run one at a time.
+# VM_LOCAL=1 means this machine is the VM (CI): `export` and `test` then use sudo instead of Lima.
 set -e
 cd "$(dirname "$0")"
 [ -f .env ] && . ./.env
+
+# --- Where things are ---------------------------------------------------------------------------------------------
+K3D=k8s-demo                                # the k3d cluster; its kubeconfig context is k3d-$K3D
+K3D_HTTP=8080 K3D_HTTPS=8443 K3D_API=8082   # on your machine: web, websecure, and the dashboard and API (see platform/k8s)
+VM=fp-demo                                  # the Lima VM
+VM_HTTP=8000 VM_PING=8001                   # on your machine: demo traffic, and /ping (the VM has no dashboard)
+VM_BACKEND=http://localhost:9500            # whoami as the VM sees it: what `export` points the services at
+GITEA=http://demo:Password123@localhost:3000/demo/gitops.git
 if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"; else COMPOSE=docker-compose; fi   # Homebrew's docker has no plugin
 SHARED="$COMPOSE -p shared -f shared/compose.yaml"
-GITEA=http://demo:Password123@localhost:3000/demo/gitops.git
 
+# --- Small helpers ------------------------------------------------------------------------------------------------
 wait_for() {   # <seconds> <url> <hint>: poll until the URL answers, or give up
   i=0
   until curl -skf -o /dev/null "$2"; do
@@ -23,15 +34,17 @@ wait_for() {   # <seconds> <url> <hint>: poll until the URL answers, or give up
   done
 }
 
-fetch_ca() {   # step-ca's root certificate into certs/: what Traefik and your client trust. No certificate is issued here, Traefik asks for its own over ACME
-  mkdir -p certs
-  $SHARED exec -T step-ca cat /home/step/certs/root_ca.crt > certs/ca.pem
+kube() { KUBECONFIG=$(k3d kubeconfig write $K3D) && export KUBECONFIG; }   # immune to other tools switching context
+
+vm_sudo() {   # run as root on the VM: the Lima VM, or this machine with VM_LOCAL=1
+  if [ -n "${VM_LOCAL:-}" ]; then sudo "$@"; else limactl shell $VM sudo "$@"; fi
 }
 
 need_ca() { [ -f certs/ca.pem ] || { echo "No certs/ca.pem: run ./demo.sh shared first"; exit 1; }; }
 
 need_token() { : "${HUB_TOKEN:?set HUB_TOKEN in .env (copy .env.example)}"; }
 
+# --- Setting up: git, shared, k8s, vm -----------------------------------------------------------------------------
 git_up() {   # Gitea on :3000, with this repo pushed to it as the `gitea` remote
   set -x
   $SHARED up -d --wait --quiet-pull gitea
@@ -53,10 +66,14 @@ sync() {   # push the working tree as it is (committed or not) to Gitea's main, 
   git push --force -q gitea "$commit:refs/heads/main"
 }
 
+fetch_ca() {   # step-ca's root certificate into certs/: what Traefik and your client trust. No certificate is issued here, Traefik asks for its own over ACME
+  mkdir -p certs
+  $SHARED exec -T step-ca cat /home/step/certs/root_ca.crt > certs/ca.pem
+}
+
 shared_up() {   # everything in shared/compose.yaml: Gitea is already up from `git`, the rest starts here
   set -x
   $SHARED up -d --quiet-pull
-  [ "$(docker wait $($SHARED ps -aq ollama-pull))" = 0 ]   # the model download
   set +x
   wait_for 120 http://localhost:3001/api/health "$SHARED logs lgtm"
   wait_for 120 http://localhost:8180/realms/demo "$SHARED logs keycloak"
@@ -65,14 +82,14 @@ shared_up() {   # everything in shared/compose.yaml: Gitea is already up from `g
   echo "Grafana http://localhost:3001  Keycloak http://localhost:8180  Vault http://localhost:8200  (login for all: demo / Password123)  step-ca https://localhost:9000"
 }
 
-k8s_up() {   # k3d cluster, Flux, and Traefik Hub installed by Flux from k8s-providers/stack
+k8s_up() {   # k3d cluster, Flux, and Traefik Hub installed by Flux from platform/k8s, then chapter 1
   need_token; need_ca
   set -x
   repo=http://host.k3d.internal:3000/demo/gitops.git
-  # :8080 and :8443 are yours; the cluster owns the host's :80 and :443 too, because ACME validation only connects there
-  k3d cluster create k8s-demo --wait -p "8080:80@loadbalancer" -p "8443:443@loadbalancer" \
+  # The ports above are yours; the cluster owns the host's :80 and :443 too, because ACME validation only connects there
+  k3d cluster create $K3D --wait -p "$K3D_HTTP:80@loadbalancer" -p "$K3D_HTTPS:443@loadbalancer" -p "$K3D_API:8082@loadbalancer" \
     -p "80:80@loadbalancer" -p "443:443@loadbalancer" --k3s-arg "--disable=traefik@server:0"
-  KUBECONFIG=$(k3d kubeconfig write k8s-demo) && export KUBECONFIG   # immune to other tools switching context
+  kube
   flux install
   kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
   flux create secret git gitea-auth --url=$repo --username=demo --password='Password123'
@@ -82,24 +99,92 @@ k8s_up() {   # k3d cluster, Flux, and Traefik Hub installed by Flux from k8s-pro
   set -x
   kubectl -n traefik create secret generic step-ca-root --from-file=ca.pem=certs/ca.pem   # for ACME against step-ca
   flux create source git gitops --url=$repo --branch=main --secret-ref=gitea-auth --interval=10s
-  # Two Kustomizations: the scenarios use Traefik's CRDs, which only exist once the stack is installed
-  flux create kustomization stack --source=GitRepository/gitops --path=./k8s-providers/stack --prune=true --interval=10s --wait
-  flux create kustomization scenarios --source=GitRepository/gitops --path=./k8s-providers/scenarios --prune=true --interval=10s
-  kubectl -n traefik rollout status deploy/traefik --timeout=300s
+  # The stack first: the chapters use Traefik's CRDs, which only exist once it is installed (they depend on it)
+  flux create kustomization stack --source=GitRepository/gitops --path=./platform/k8s --prune=true --interval=10s --wait
   set +x
+  chapter_up 1
+  kubectl -n traefik rollout status deploy/traefik --timeout=300s
+  echo "k3d dashboard: http://localhost:$K3D_API/dashboard/"
 }
 
-vm_up() {   # Lima VM running file-provider/vm-provision.sh (any Linux VM works the same way)
+vm_up() {   # Lima VM running platform/vm/vm-provision.sh (any Linux VM works the same way)
   need_token
   set -x
-  limactl start --name=fp-demo --tty=false --set ".disk=\"20GiB\"" template:default
+  if ! limactl list -q | grep -qx $VM; then limactl start --name=$VM --tty=false --set ".disk=\"20GiB\"" template:default
+  elif ! limactl list --format '{{.Status}}' $VM | grep -q Running; then limactl start $VM --tty=false; fi   # re-running provisions again
   set +x   # keep the token off screen
-  limactl shell fp-demo sudo HUB_TOKEN="$HUB_TOKEN" \
-    GITOPS_REPO=http://demo:Password123@host.lima.internal:3000/demo/gitops.git sh -s < file-provider/vm-provision.sh
-  wait_for 300 http://localhost:8001/ping "limactl shell fp-demo sudo journalctl -u traefik"
-  echo "Dashboard: http://localhost:8001/dashboard/"
+  limactl shell $VM sudo HUB_TOKEN="$HUB_TOKEN" \
+    GITOPS_REPO=http://demo:Password123@host.lima.internal:3000/demo/gitops.git sh -s < platform/vm/vm-provision.sh
+  wait_for 300 http://localhost:$VM_PING/ping "limactl shell $VM sudo journalctl -u traefik"
+  echo "VM up: http://localhost:$VM_HTTP"
 }
 
+# --- Chapters: which are on in k3d, and their tests ---------------------------------------------------------------
+chapter_up() {   # [N|all]: Flux applies chapters 1..N on k3d (default all) and removes the later ones
+  upto=${1:-all}
+  kube
+  for d in chapters/[0-9][0-9]-*; do
+    [ -f "$d/kustomization.yaml" ] || continue   # a chapter with no Kubernetes objects is skipped
+    num=${d#chapters/}; num=$((1${num%%-*} - 100))   # 01 -> 1 (the leading 1 stops 08 being read as octal)
+    name=chapter-${d#chapters/}
+    if [ "$upto" = all ] || [ "$num" -le "$upto" ]; then
+      flux create kustomization "$name" --source=GitRepository/gitops --path="./$d" --depends-on=stack --prune=true --interval=10s
+    else
+      flux delete kustomization "$name" --silent 2>/dev/null || true
+    fi
+  done
+}
+
+enabled_chapters() {   # the chapter directories that have a Flux Kustomization on k3d
+  kube
+  for k in $(kubectl get kustomization -n flux-system -o name 2>/dev/null); do
+    case ${k##*/} in chapter-*) echo "chapters/${k##*/chapter-}" ;; esac
+  done | sort
+}
+
+# The test files of the given chapters: *.hurl pass on k3d and on the exported VM, *.k8s.hurl on k3d only,
+# *.vm.hurl on everything, including the hand-written VM
+chapter_tests() { for d in "$@"; do ls "$d"/*.hurl 2>/dev/null || true; done; }
+
+# --- Sanity check: k3d's config on the VM -------------------------------------------------------------------------
+vm_exported() { vm_sudo test -f /etc/traefik/dynamic/exported.yaml; }   # is the VM running `export`'s config?
+
+export_vm() {   # k3d's config, as file-provider YAML, on the VM
+  need_ca; kube
+  mkdir -p platform/vm/generated
+  exported=platform/vm/generated/exported.yaml
+  platform/vm/export.sh http://localhost:$K3D_API k3d-$K3D $VM_BACKEND > $exported
+  echo "exported $(yq '(.http.routers // {}) | length' $exported) routers, $(yq '(.http.middlewares // {}) | length' $exported) middlewares, $(yq '(.http.services // {}) | length' $exported) services to $exported"
+  vm_sudo systemctl disable --now gitops-sync.timer gitops-sync.service > /dev/null 2>&1   # or Git would put the hand-written files back
+  vm_sudo sh -c 'rm -f /etc/traefik/dynamic/*'
+  vm_sudo tee /etc/traefik/dynamic/exported.yaml < $exported > /dev/null
+  echo "The k3d dashboard shows what was exported from: http://localhost:$K3D_API/dashboard/ (the VM has none)"
+  export_matrix
+}
+
+export_matrix() {   # every enabled chapter's tests against the VM: what runs there on the exported config, and what doesn't
+  status=0
+  echo "== what runs on the VM, from the exported config"
+  for f in $(chapter_tests $(enabled_chapters)); do
+    case $f in
+      *.k8s.hurl) printf '  %-5s %s\n        %s\n' SKIP "$f" "$(sed -n '1s/^# Kubernetes only: //p' "$f")" ;;
+      *) if result=$(hurl --test --retry 20 --retry-interval 1000 --cacert certs/ca.pem \
+                      --variable base_url=http://localhost:$VM_HTTP --variable tls_port= "$f" 2>&1); then
+           printf '  %-5s %s\n' PASS "$f"
+         else
+           printf '  %-5s %s\n' FAIL "$f"; echo "$result"; status=1
+         fi ;;
+    esac
+  done
+  return $status
+}
+
+vm_reset() {   # undo export_vm: gitops-sync puts the hand-written files back within seconds
+  vm_sudo systemctl enable --now gitops-sync.timer > /dev/null
+  vm_sudo systemctl start gitops-sync.service
+}
+
+# --- Testing ------------------------------------------------------------------------------------------------------
 smoke() {   # an up check for every shared service (the traffic generator needs both gateways up too)
   status=0
   echo "== shared services"
@@ -107,8 +192,8 @@ smoke() {   # an up check for every shared service (the traffic generator needs 
   [ "$($SHARED exec -T redis sh -c 'redis-cli set smoke ok >/dev/null && redis-cli get smoke')" = ok ] \
     || { echo "error: redis does not answer"; status=1; }
   i=0
-  until $SHARED logs --tail 5 traffic | grep -q ' 200 '; do
-    i=$((i+1)); [ $i -lt 10 ] || { echo "error: traffic gets no 200 from the gateways"; status=1; break; }
+  until log=$($SHARED logs --tail 20 traffic) && echo "$log" | grep -q "^traffic.* 200 .*:$K3D_HTTP/" && echo "$log" | grep -q "^traffic.* 200 .*:$VM_HTTP/"; do
+    i=$((i+1)); [ $i -lt 10 ] || { echo "error: traffic gets no 200 from one of the gateways (k3d :$K3D_HTTP, VM :$VM_HTTP)"; status=1; break; }
     sleep 1
   done
   return $status
@@ -120,22 +205,32 @@ test_all() {   # hurl retries for up to 20s, so this can run straight after `syn
   echo "== shared/opa"
   docker run --rm -v "$PWD/shared/opa:/policies:ro" openpolicyagent/opa:1.21.2 test /policies || status=1
   need_ca
-  for target in k8s-providers=8080:8443 file-provider=8000:; do   # HTTPS (ACME) is on Kubernetes only
-    ports=${target#*=}
-    if [ $# -gt 0 ]; then files="$*"   # tests named *.k8s.hurl are for Kubernetes only
-    elif [ "${target%=*}" = k8s-providers ]; then files=$(ls tests/*.hurl)
-    else files=$(ls tests/*.hurl | grep -v '\.k8s\.hurl$'); fi
-    tls=${ports#*:}
-    echo "== ${target%=*} (localhost:${ports%:*}${tls:+, HTTPS on $tls})"
+  chapters=$(enabled_chapters)
+  [ -n "$chapters" ] || { echo "No chapter is on: ./demo.sh chapter 1"; return 1; }
+  # k3d runs every test of the enabled chapters. The VM runs the *.vm.hurl ones (they match its hand-written config),
+  # or, after `export`, all of them except the *.k8s.hurl ones (Kubernetes only)
+  if [ $# -gt 0 ]; then k8s_files="$*"; vm_files=$(printf '%s\n' "$@" | grep -v '\.k8s\.hurl$' || true)
+  else
+    k8s_files=$(chapter_tests $chapters)
+    if vm_exported; then vm_files=$(chapter_tests $chapters | grep -v '\.k8s\.hurl$' || true)
+    else vm_files=$(for d in $chapters; do ls $d/*.vm.hurl 2>/dev/null || true; done); fi
+  fi
+  for target in k3d vm; do   # HTTPS (ACME) is on k3d only
+    if [ $target = k3d ]; then files=$k8s_files; port=$K3D_HTTP; tls=$K3D_HTTPS; label="k3d (localhost:$port, HTTPS on $tls)"
+    else files=$vm_files; port=$VM_HTTP; tls=; label="VM (localhost:$port)"; vm_exported && label="$label, exported config"; fi
+    [ -n "$files" ] || { echo "== $label: no tests"; continue; }
+    echo "== $label"
     hurl --test --retry 20 --retry-interval 1000 --cacert certs/ca.pem \
-      --variable base_url="http://localhost:${ports%:*}" --variable tls_port="$tls" $files || status=1
+      --variable base_url="http://localhost:$port" --variable tls_port="$tls" $files || status=1
   done
   return $status
 }
 
+# --- Tearing down, and the commands -------------------------------------------------------------------------------
 clean() {
-  k3d cluster delete k8s-demo || true
-  limactl delete -f fp-demo || true
+  rm -rf platform/vm/generated
+  k3d cluster delete $K3D || true
+  limactl delete -f $VM || true
   $SHARED down -v || true
   git remote remove gitea 2>/dev/null || true
 }
@@ -146,11 +241,13 @@ case $1 in
   shared) shared_up ;;
   k8s)   k8s_up ;;
   vm)    vm_up ;;
+  chapter) shift; chapter_up "$@" ;;
   sync)  sync ;;
+  export) export_vm ;;
+  vm-reset) vm_reset ;;
   smoke) smoke ;;
   test)  shift; test_all "$@" ;;
   clean) clean ;;
-  rebuild) clean; git_up; shared_up; k8s_up; vm_up; test_all ;;
-  *)     sed -n '2,8p' "$0"; exit 1 ;;
-
+  rebuild) clean; git_up; shared_up; k8s_up; vm_up; chapter_up all; test_all; export_vm ;;
+  *)     sed -n '2,13p' "$0"; exit 1 ;;
 esac

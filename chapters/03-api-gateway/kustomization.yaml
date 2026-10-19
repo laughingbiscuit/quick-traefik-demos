@@ -1,0 +1,5 @@
+# Chapter 3: Traefik as an API gateway. Authentication.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - basicauth.yaml

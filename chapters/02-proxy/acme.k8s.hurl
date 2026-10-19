@@ -1,4 +1,4 @@
-# Kubernetes only: the VM can't own the :80 that step-ca validates on.
+# Kubernetes only: HTTPS needs the websecure entrypoint and the step resolver, which are static config the VM lacks, and a :80 for step-ca to validate on.
 # Plain HTTP only redirects: the app is served on :443.
 GET {{base_url}}/
 Host: api.traefik-hub.test

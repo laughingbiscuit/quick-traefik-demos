@@ -38,9 +38,19 @@ spec:
       web:
         port: 8000
         exposedPort: 80
+      # The dashboard and API entrypoint, exposed on :8082 for the demo. It is the only dashboard in the lab (the VM
+      # has none): it shows what every provider gave this Traefik. `./demo.sh export` reads /api/rawdata here.
+      # Unauthenticated, so lab-only: never expose this on a real cluster.
+      traefik:
+        expose:
+          default: true
+        exposedPort: 8082
+    ingressRoute:
+      dashboard:
+        enabled: true
     # Step 1b - websecure keeps the chart defaults (container port 8443, exposed as :443, TLS on).
     # There is no pre-issued certificate: every name is served with a certificate Traefik got over ACME.
-    # ACME from step-ca: Traefik gets its own certificates and renews them, see 00-security-acme.yaml.
+    # ACME from step-ca: Traefik gets its own certificates and renews them, see chapters/02-proxy/acme.yaml.
     # step-ca validates on this cluster's :80 (the web entrypoint). Its root CA is the Secret
     # step-ca-root, created by `./demo.sh k8s`. Certificates last 24h, so Traefik renews them in
     # their last 6 hours, checking every 10 minutes. Without persistence the account and
@@ -65,6 +75,31 @@ spec:
           port: 8000
           namespacePolicy:
             from: All
+    # Providers: each watches its own source and Traefik merges them into one configuration, one dashboard.
+    # Ingress and IngressRoute are on by default, Gateway API is switched on here, and so is the file provider:
+    # one instance, four sources, told apart in the dashboard by their suffix (@kubernetes, @kubernetescrd,
+    # @kubernetesgateway, @file). Chapter 1's file route is below: the VM runs the same YAML from a file, with
+    # its own backend (chapters/01-passthrough/vm/passthrough.yaml).
     providers:
       kubernetesGateway:
         enabled: true
+      file:
+        enabled: true
+        content:
+          http:
+            routers:
+              whoami:
+                rule: PathPrefix(`/passthrough`) && Query(`route`, `file`)
+                entryPoints: [web]
+                middlewares: [addHeaders]
+                service: whoami-passthrough
+            middlewares:
+              addHeaders:
+                headers:
+                  customResponseHeaders:
+                    X-Demo-Route: file
+            services:
+              whoami-passthrough:
+                loadBalancer:
+                  servers:
+                    - url: http://whoami.demo.svc.cluster.local:80
