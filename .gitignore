@@ -15,3 +15,6 @@ _site/
 
 # Generated: ./demo.sh export (can hold secrets read from the cluster)
 /platform/vm/generated/
+
+# Notes for a customer session: not for Git
+/customer/

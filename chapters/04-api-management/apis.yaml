@@ -1,0 +1,48 @@
+# Two APIs, each behind a route that carries the API's name. An API with no subscriber for the caller is a 403.
+apiVersion: hub.traefik.io/v1alpha1
+kind: API
+metadata: {name: orders, namespace: demo}
+spec:
+  title: Orders
+  apiAuths:
+    - name: partners-jwt
+---
+apiVersion: hub.traefik.io/v1alpha1
+kind: API
+metadata: {name: payments, namespace: demo}
+spec:
+  title: Payments
+  apiAuths:
+    - name: partners-jwt
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: orders
+  namespace: demo
+  annotations:
+    hub.traefik.io/api: orders
+spec:
+  entryPoints: [web]
+  routes:
+    - match: PathPrefix(`/orders`)
+      kind: Rule
+      services:
+        - name: orders
+          port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: payments
+  namespace: demo
+  annotations:
+    hub.traefik.io/api: payments
+spec:
+  entryPoints: [web]
+  routes:
+    - match: PathPrefix(`/payments`)
+      kind: Rule
+      services:
+        - name: payments
+          port: 80

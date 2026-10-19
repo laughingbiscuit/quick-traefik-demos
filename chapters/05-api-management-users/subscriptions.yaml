@@ -1,0 +1,29 @@
+# One application, demo-app: every person comes through it. What a person may call is decided by the claims in their
+# token: anyone who signed in can read the Catalog, only someone with the admin role can reach Admin.
+apiVersion: hub.traefik.io/v1alpha1
+kind: APIPlan
+metadata: {name: users-standard, namespace: demo}
+spec: {title: Users}
+---
+apiVersion: hub.traefik.io/v1alpha1
+kind: ManagedApplication
+metadata: {name: demo-app, namespace: demo}
+spec: {appId: demo-app, owner: users}
+---
+apiVersion: hub.traefik.io/v1alpha1
+kind: ManagedSubscription
+metadata: {name: catalog-for-users, namespace: demo}
+spec:
+  apiPlan: {name: users-standard}
+  apis: [{name: catalog}]
+  managedApplications: [{name: demo-app}]
+  claims: "Contains(`aud`, `gateway`)"
+---
+apiVersion: hub.traefik.io/v1alpha1
+kind: ManagedSubscription
+metadata: {name: admin-for-admins, namespace: demo}
+spec:
+  apiPlan: {name: users-standard}
+  apis: [{name: admin}]
+  managedApplications: [{name: demo-app}]
+  claims: "Contains(`aud`, `gateway`) && Contains(`realm_access.roles`, `admin`)"

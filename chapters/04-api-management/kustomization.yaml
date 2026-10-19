@@ -1,0 +1,8 @@
+# API management: which client may call which API, decided at the gateway whatever the token's scope says.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - backends.yaml
+  - api-auth.yaml
+  - apis.yaml
+  - partners.yaml

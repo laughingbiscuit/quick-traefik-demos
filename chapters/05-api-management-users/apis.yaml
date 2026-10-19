@@ -1,0 +1,35 @@
+apiVersion: hub.traefik.io/v1alpha1
+kind: API
+metadata: {name: catalog, namespace: demo}
+spec:
+  title: Catalog
+  apiAuths: [{name: users-jwt}]
+---
+apiVersion: hub.traefik.io/v1alpha1
+kind: API
+metadata: {name: admin, namespace: demo}
+spec:
+  title: Admin
+  apiAuths: [{name: users-jwt}]
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: catalog
+  namespace: demo
+  annotations: {hub.traefik.io/api: catalog}
+spec:
+  entryPoints: [web]
+  routes:
+    - {match: "PathPrefix(`/catalog`)", kind: Rule, services: [{name: catalog, port: 80}]}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: admin
+  namespace: demo
+  annotations: {hub.traefik.io/api: admin}
+spec:
+  entryPoints: [web]
+  routes:
+    - {match: "PathPrefix(`/admin`)", kind: Rule, services: [{name: admin, port: 80}]}

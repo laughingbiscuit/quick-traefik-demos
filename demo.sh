@@ -169,7 +169,8 @@ enabled_chapters() {   # the chapter directories that have a Flux Kustomization 
 }
 
 # The test files of the given chapters: *.hurl pass on k3d and on the exported VM, *.k8s.hurl on k3d only,
-# *.vm.hurl on everything, including the hand-written VM
+# *.vm.hurl on everything, including the hand-written VM. A *.k8s.sh script runs on k3d only, after the hurl files: for
+# what a hurl file cannot do, like changing the cluster in the middle of a test
 chapter_tests() { for d in "$@"; do ls "$d"/*.hurl 2>/dev/null || true; done; }
 
 # --- Sanity check: k3d's config on the VM -------------------------------------------------------------------------
@@ -249,6 +250,15 @@ test_all() {   # hurl retries for up to 20s, so this can run straight after `syn
     hurl --test --retry 20 --retry-interval 1000 --cacert certs/ca.pem \
       --variable base_url="http://localhost:$port" --variable tls_port="$tls" $files || status=1
   done
+  if [ $# -eq 0 ]; then   # the scripts, unless you named hurl files
+    kube
+    for d in $chapters; do
+      for f in "$d"/*.k8s.sh; do
+        [ -f "$f" ] || continue
+        echo "== $f"; sh "$f" || status=1
+      done
+    done
+  fi
   return $status
 }
 

@@ -41,7 +41,16 @@ services:
 
   keycloak:   # realm "demo" is imported on start: see keycloak/demo-realm.json
     image: quay.io/keycloak/keycloak:26.8.1
-    command: start-dev --import-realm
+    # HTTPS with a self-signed certificate, made on every start (so no key sits in Git): Traefik Hub only fetches the
+    # JWKS of a token issuer over HTTPS. Lab-only: clients must skip verification (see chapters/04-api-management)
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        rm -f /opt/keycloak/conf/server.keystore
+        keytool -genkeypair -storepass Password123 -storetype PKCS12 -keyalg RSA -keysize 2048 -alias server \
+          -dname CN=keycloak -ext SAN=DNS:localhost,DNS:host.k3d.internal,DNS:host.lima.internal \
+          -keystore /opt/keycloak/conf/server.keystore
+        exec /opt/keycloak/bin/kc.sh start-dev --import-realm
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: demo
       KC_BOOTSTRAP_ADMIN_PASSWORD: Password123
@@ -49,8 +58,10 @@ services:
       # the same issuer in tokens, while their own back-channel calls use whatever host they dialled.
       KC_HOSTNAME: http://localhost:8180
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTPS_KEY_STORE_PASSWORD: Password123   # for the keystore made below; Keycloak finds conf/server.keystore by itself
     ports:
       - "8180:8080"
+      - "8543:8443"   # HTTPS, with the self-signed certificate dev mode makes: Traefik Hub only fetches JWKS over HTTPS
     volumes:
       - ./keycloak/demo-realm.json:/opt/keycloak/data/import/demo-realm.json:ro
     restart: unless-stopped
