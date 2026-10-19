@@ -1,4 +1,4 @@
-# Demo backend: the Deployment and the Service every scenario routes to.
+# Demo backend: the Deployment and the Service every chapter routes to.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

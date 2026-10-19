@@ -1,5 +1,5 @@
-# The namespace the demo app and scenarios live in. Its own file so that
-# switching whoami off doesn't delete the namespace and every scenario in it.
+# The namespace the demo app and the chapters live in. Its own file so that
+# switching whoami off doesn't delete the namespace and every chapter in it.
 apiVersion: v1
 kind: Namespace
 metadata:

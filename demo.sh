@@ -3,7 +3,7 @@
 #   ./demo.sh up        Gitea and the shared services, then k3d (:8080, HTTPS :8443, dashboard :8082) and the VM (:8000, no dashboard), on chapter 1
 #   ./demo.sh chapter N turn chapters 1..N on in k3d (`all` for every one), and the later ones off
 #   ./demo.sh sync      push this working tree to Gitea: k3d and the VM pick it up within ~20s
-#   ./demo.sh export    chapter 5: turn what k3d runs into file-provider YAML, run that on the VM, and show what works there
+#   ./demo.sh export    sanity check: turn what k3d runs into file-provider YAML, run that on the VM, and show what works there
 #   ./demo.sh vm-reset  undo `export`: the VM goes back to its own hand-written config
 #   ./demo.sh test      run the tests of the enabled chapters (or the files you name), plus the shared services' smoke tests
 #   ./demo.sh smoke     just the smoke tests of the shared services
@@ -125,11 +125,11 @@ chapter_up() {   # [N|all]: Flux applies chapters 1..N on k3d (default all) and 
   upto=${1:-all}
   kube
   for d in chapters/[0-9][0-9]-*; do
-    [ -f "$d/k8s/kustomization.yaml" ] || continue
+    [ -f "$d/kustomization.yaml" ] || continue   # a chapter with no Kubernetes objects is skipped
     num=${d#chapters/}; num=$((1${num%%-*} - 100))   # 01 -> 1 (the leading 1 stops 08 being read as octal)
     name=chapter-${d#chapters/}
     if [ "$upto" = all ] || [ "$num" -le "$upto" ]; then
-      flux create kustomization "$name" --source=GitRepository/gitops --path="./$d/k8s" --depends-on=stack --prune=true --interval=10s
+      flux create kustomization "$name" --source=GitRepository/gitops --path="./$d" --depends-on=stack --prune=true --interval=10s
     else
       flux delete kustomization "$name" --silent 2>/dev/null || true
     fi
@@ -143,17 +143,18 @@ enabled_chapters() {   # the chapter directories that have a Flux Kustomization 
   done | sort
 }
 
-# The test files of the given chapters. tests/ passes on k3d and on the exported VM, vm/ also on the hand-written VM
-chapter_tests() { for d in "$@"; do ls "$d"/tests/*.hurl "$d"/vm/*.hurl 2>/dev/null || true; done; }
+# The test files of the given chapters: *.hurl pass on k3d and on the exported VM, *.k8s.hurl on k3d only,
+# *.vm.hurl on everything, including the hand-written VM
+chapter_tests() { for d in "$@"; do ls "$d"/*.hurl 2>/dev/null || true; done; }
 
-# --- Chapter 5: k3d's config on the VM ----------------------------------------------------------------------------
+# --- Sanity check: k3d's config on the VM -------------------------------------------------------------------------
 vm_exported() { vm_sudo test -f /etc/traefik/dynamic/exported.yaml; }   # is the VM running `export`'s config?
 
 export_vm() {   # k3d's config, as file-provider YAML, on the VM
   need_ca; kube
-  mkdir -p chapters/05-to-the-vm/generated
-  exported=chapters/05-to-the-vm/generated/exported.yaml
-  chapters/05-to-the-vm/export.sh http://localhost:$K3D_API k3d-$K3D $VM_BACKEND > $exported
+  mkdir -p platform/vm/generated
+  exported=platform/vm/generated/exported.yaml
+  platform/vm/export.sh http://localhost:$K3D_API k3d-$K3D $VM_BACKEND > $exported
   echo "exported $(yq '(.http.routers // {}) | length' $exported) routers, $(yq '(.http.middlewares // {}) | length' $exported) middlewares, $(yq '(.http.services // {}) | length' $exported) services to $exported"
   vm_sudo systemctl disable --now gitops-sync.timer gitops-sync.service > /dev/null 2>&1   # or Git would put the hand-written files back
   vm_sudo sh -c 'rm -f /etc/traefik/dynamic/*'
@@ -207,13 +208,13 @@ test_all() {   # hurl retries for up to 20s, so this can run straight after `syn
   need_ca
   chapters=$(enabled_chapters)
   [ -n "$chapters" ] || { echo "No chapter is on: ./demo.sh chapter 1"; return 1; }
-  # k3d runs every test of the enabled chapters. The VM runs the tests in vm/ (they match its hand-written config),
-  # or, after `export`, all of them except the ones named *.k8s.hurl (Kubernetes only)
+  # k3d runs every test of the enabled chapters. The VM runs the *.vm.hurl ones (they match its hand-written config),
+  # or, after `export`, all of them except the *.k8s.hurl ones (Kubernetes only)
   if [ $# -gt 0 ]; then k8s_files="$*"; vm_files=$(printf '%s\n' "$@" | grep -v '\.k8s\.hurl$' || true)
   else
     k8s_files=$(chapter_tests $chapters)
     if vm_exported; then vm_files=$(chapter_tests $chapters | grep -v '\.k8s\.hurl$' || true)
-    else vm_files=$(for d in $chapters; do ls $d/vm/*.hurl 2>/dev/null || true; done); fi
+    else vm_files=$(for d in $chapters; do ls $d/*.vm.hurl 2>/dev/null || true; done); fi
   fi
   for target in k3d vm; do   # HTTPS (ACME) is on k3d only
     if [ $target = k3d ]; then files=$k8s_files; port=$K3D_HTTP; tls=$K3D_HTTPS; label="k3d (localhost:$port, HTTPS on $tls)"
@@ -228,7 +229,7 @@ test_all() {   # hurl retries for up to 20s, so this can run straight after `syn
 
 # --- Tearing down, and the commands -------------------------------------------------------------------------------
 clean() {
-  rm -rf chapters/05-to-the-vm/generated
+  rm -rf platform/vm/generated
   k3d cluster delete $K3D || true
   limactl delete -f $VM || true
   $SHARED down -v || true

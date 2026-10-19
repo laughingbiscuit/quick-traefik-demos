@@ -100,10 +100,10 @@ RestartSec=2
 WantedBy=multi-user.target
 EOF
 
-# The scenarios' backend. Port 9500: Lima forwards every guest port to the host, so it must not clash with a shared service.
+# The chapters' backend. Port 9500: Lima forwards every guest port to the host, so it must not clash with a shared service.
 cat > /etc/systemd/system/whoami.service <<'EOF'
 [Unit]
-Description=whoami, the backend of the VM scenarios
+Description=whoami, the backend of the VM chapters
 
 [Service]
 DynamicUser=yes

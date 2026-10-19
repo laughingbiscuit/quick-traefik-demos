@@ -39,7 +39,7 @@ spec:
         port: 8000
         exposedPort: 80
       # The dashboard and API entrypoint, exposed on :8082 for the demo. It is the only dashboard in the lab (the VM
-      # has none): it shows what every provider gave this Traefik. Chapter 5 reads /api/rawdata here.
+      # has none): it shows what every provider gave this Traefik. `./demo.sh export` reads /api/rawdata here.
       # Unauthenticated, so lab-only: never expose this on a real cluster.
       traefik:
         expose:
@@ -50,7 +50,7 @@ spec:
         enabled: true
     # Step 1b - websecure keeps the chart defaults (container port 8443, exposed as :443, TLS on).
     # There is no pre-issued certificate: every name is served with a certificate Traefik got over ACME.
-    # ACME from step-ca: Traefik gets its own certificates and renews them, see chapters/02-proxy/k8s/acme.yaml.
+    # ACME from step-ca: Traefik gets its own certificates and renews them, see chapters/02-proxy/acme.yaml.
     # step-ca validates on this cluster's :80 (the web entrypoint). Its root CA is the Secret
     # step-ca-root, created by `./demo.sh k8s`. Certificates last 24h, so Traefik renews them in
     # their last 6 hours, checking every 10 minutes. Without persistence the account and
